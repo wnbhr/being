@@ -166,3 +166,18 @@ Being supports optional extensions that add capabilities without changing the co
 ---
 
 **Ruddia** — Personality is the Runtime.
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Getting Started](docs/getting-started.md) | Set up a Being and make your first API call in 5 minutes |
+| [Concepts](docs/concepts.md) | Being, SOUL, Memory, Patrol, Identity — the core ideas |
+| [API Reference](docs/specs/02-being-api-reference.md) | All REST endpoints with curl examples |
+| [MCP Server](docs/specs/03-mcp-server.md) | MCP tools, connection setup, and client examples |
+| [Memory & Patrol](docs/specs/04-memory-and-patrol.md) | Scene-based memory and the 7-step patrol pipeline |
+| [Being Identity](docs/specs/05-being-identity.md) | Ed25519 key pairs, signature chains, and verification |
+| [Sense-Act Bridge](docs/specs/06-sense-act-bridge.md) | WebSocket Bridge for device integration |
+| [Architecture](docs/specs/01-architecture-overview.md) | System architecture, deployment, and BYOK design |
