@@ -140,7 +140,7 @@ npm start
 | [Sense-Act Bridge](docs/specs/06-sense-act-bridge.md) | WebSocket Bridge for device integration |
 | [Architecture](docs/specs/01-architecture-overview.md) | System architecture, deployment, and BYOK design |
 | [OAuth 2.1](docs/specs/07-oauth.md) | Third-party authorization flow |
-| [Extensions](docs/specs/08-extensions.md) | Telegram BYOB, Tool Loop, Sandbox |
+| [Extensions](docs/specs/08-extensions.md) | Extension system design (all planned) |
 | [Vision](docs/vision.md) | Why we're building this |
 
 ## Extensions
