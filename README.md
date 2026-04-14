@@ -147,7 +147,7 @@ npm start
 
 Being supports optional extensions that add capabilities without changing the core:
 
-- **Telegram BYOB** — Connect your own Telegram bot to a Being (free)
+- **Telegram BYOB** *(coming soon)* — Connect your own Telegram bot to a Being
 - **Tool Loop** *(coming soon)* — Autonomous LLM agent loop with web search, file ops, and code execution
 - **Sandbox** *(coming soon)* — Isolated workspace with GitHub integration for code execution
 - **Sense/Act Bridge** *(planned)* — Connect physical devices and external services
