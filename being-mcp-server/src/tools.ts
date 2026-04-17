@@ -1,177 +1,153 @@
 /**
- * tools.ts — Being MCP Server ツール定義（8ツール）
+ * tools.ts — Being MCP Server tool definitions (8 tools)
  *
- * 各ツールは Being API REST エンドポイントの薄いラッパー。
- * inputSchema は Being Worker 側の Anthropic ツール定義と一致させる。
+ * Each tool is a thin wrapper around Being API REST endpoints.
+ * Schemas use zod for MCP SDK compatibility.
  *
  * #567
  */
 
-import { BeingApiClient } from './api-client.js'
+import { z } from "zod"
+import { BeingApiClient } from "./api-client.js"
 
 const client = new BeingApiClient()
 
 export type ToolDef = {
   name: string
   description: string
-  inputSchema: {
-    type: 'object'
-    properties: Record<string, unknown>
-    required?: string[]
-  }
+  inputSchema: Record<string, z.ZodTypeAny>
   handler: (args: Record<string, unknown>) => Promise<unknown>
 }
 
 export const tools: ToolDef[] = [
   // ── recall_memory ───────────────────────────────────────────
   {
-    name: 'recall_memory',
-    description: '指定したクラスタの記憶ダイジェストとノードを取得する。特定のクラスタを深掘りしたい時に使う。',
+    name: "recall_memory",
+    description: "Search memory graph for relevant nodes in a specific cluster.",
     inputSchema: {
-      type: 'object',
-      properties: {
-        cluster_id: { type: 'string', description: 'クラスタID（UUID）' },
-        limit: { type: 'number', description: '返すノード数（デフォルト5）' },
-        query: { type: 'string', description: 'ノード絞り込み用キーワード（省略可）' },
-        no_nodes: { type: 'boolean', description: 'trueでdigestのみ返す' },
-      },
-      required: ['cluster_id'],
+      cluster_id: z.string().describe("Cluster ID (UUID)"),
+      limit: z.number().optional().describe("Max nodes to return (default 5)"),
+      query: z.string().optional().describe("Keyword filter for nodes"),
+      no_nodes: z.boolean().optional().describe("If true, return digest only"),
     },
-    handler: async (args) => client.request('POST', '/memory/recall', args),
+    handler: async (args) => client.request("POST", "/memory/recall", args),
   },
 
   // ── merge_nodes ─────────────────────────────────────────────
   {
-    name: 'merge_nodes',
-    description: '複数の類似した記憶ノードを1つに統合する。重複・類似ノードを整理する時に使う。',
+    name: "merge_nodes",
+    description: "Merge multiple similar memory nodes into one.",
     inputSchema: {
-      type: 'object',
-      properties: {
-        node_ids: { type: 'string', description: '統合するノードID（カンマ区切り）' },
-        summary: { type: 'string', description: '統合後のaction文字列' },
-        feeling: { type: 'string', description: '統合後のfeeling（省略可）' },
-      },
-      required: ['node_ids', 'summary'],
+      node_ids: z.string().describe("Comma-separated node IDs to merge"),
+      summary: z.string().describe("Summary action text for the merged node"),
+      feeling: z.string().optional().describe("Feeling for the merged node"),
     },
-    handler: async (args) => client.request('POST', '/memory/merge', args),
+    handler: async (args) => client.request("POST", "/memory/merge", args),
   },
 
   // ── update_memory ───────────────────────────────────────────
   {
-    name: 'update_memory',
-    description: 'パートナーの記憶（preferences, knowledge, relationship, diary, notes等）を読み書きする。',
+    name: "update_memory",
+    description:
+      "Read/write partner memory (preferences, knowledge, relationship, diary, notes, etc.).",
     inputSchema: {
-      type: 'object',
-      properties: {
-        target: {
-          type: 'string',
-          description: '更新対象（preferences / knowledge / relationship / partner_tools / partner_map / diary / notes / partner_rules / souls）',
-        },
-        action: {
-          type: 'string',
-          description: '操作種別（get / append / update / delete）',
-        },
-        content: { type: 'string', description: '追記・更新する内容（get/delete時は省略可）' },
-        key: { type: 'string', description: 'update/delete/getで対象を絞る場合のキー' },
-      },
-      required: ['target', 'action'],
+      target: z
+        .string()
+        .describe(
+          "Target: preferences / knowledge / relationship / partner_tools / partner_map / diary / notes / partner_rules / souls"
+        ),
+      action: z.string().describe("Operation: get / append / update / delete"),
+      content: z.string().optional().describe("Content for append/update"),
+      key: z.string().optional().describe("Key filter for update/delete/get"),
     },
-    handler: async (args) => client.request('POST', '/memory/update', args),
+    handler: async (args) => client.request("POST", "/memory/update", args),
   },
 
   // ── conclude_topic ──────────────────────────────────────────
   {
-    name: 'conclude_topic',
-    description: '現在のトピックが一段落した際に呼び出す。会話をアーカイブし、要約をピン留めコンテキストとして保存する。',
+    name: "conclude_topic",
+    description:
+      "Archive the current topic and save a summary to pinned context.",
     inputSchema: {
-      type: 'object',
-      properties: {
-        summary: { type: 'string', description: 'トピックの要約（1〜3文）' },
-        scenes: {
-          type: 'array',
-          // Worker側（conclude-tool.ts）の定義に合わせて string[] のまま維持
-          // ConcludeTopicInput.scenes: string[] — 各要素は短い文字列
-          description: 'このトピックで生まれた印象的なシーン・記憶の断片（任意）。各要素は短い文字列。',
-          items: { type: 'string' },
-        },
-      },
-      required: ['summary'],
+      summary: z.string().describe("Topic summary (1-3 sentences)"),
+      scenes: z
+        .array(z.string())
+        .optional()
+        .describe("Memorable scenes from this topic"),
     },
-    handler: async (args) => client.request('POST', '/memory/conclude', args),
+    handler: async (args) => client.request("POST", "/memory/conclude", args),
   },
 
   // ── search_history ──────────────────────────────────────────
   {
-    name: 'search_history',
-    description: '過去の会話履歴をキーワードや日付で検索する。',
+    name: "search_history",
+    description: "Search past conversation history by keyword or date.",
     inputSchema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: '検索キーワード（部分一致）' },
-        date_from: { type: 'string', description: '検索開始日（YYYY-MM-DD）' },
-        date_to: { type: 'string', description: '検索終了日（YYYY-MM-DD）' },
-        limit: { type: 'number', description: '返す件数（デフォルト10、最大50）' },
-        session_id: { type: 'string', description: 'セッションID絞り込み（省略可）' },
-      },
-      required: ['query'],
+      query: z.string().describe("Search keyword (partial match)"),
+      date_from: z.string().optional().describe("Start date (YYYY-MM-DD)"),
+      date_to: z.string().optional().describe("End date (YYYY-MM-DD)"),
+      limit: z
+        .number()
+        .optional()
+        .describe("Max results (default 10, max 50)"),
+      session_id: z.string().optional().describe("Session ID filter"),
     },
-    handler: async (args) => client.request('POST', '/memory/search-history', args),
+    handler: async (args) =>
+      client.request("POST", "/memory/search-history", args),
   },
 
   // ── update_relation ─────────────────────────────────────────
   {
-    name: 'update_relation',
-    description: 'Being の関係性（relations テーブル）を更新する。人・デバイス・AIなど外部エンティティとの関係を記録・削除できる。',
+    name: "update_relation",
+    description:
+      "Update relationships with external entities (people, devices, AIs, organizations).",
     inputSchema: {
-      type: 'object',
-      properties: {
-        entity_name: { type: 'string', description: '関係先エンティティの名前または識別子' },
-        relation_type: { type: 'string', description: 'エンティティの種別（person / device / ai / organization）' },
-        content: { type: 'string', description: '関係性の説明・詳細（upsert時必須）' },
-        action: { type: 'string', description: '操作種別（upsert / delete）' },
-      },
-      required: ['entity_name', 'relation_type', 'action'],
+      entity_name: z.string().describe("Entity name or identifier"),
+      relation_type: z
+        .string()
+        .describe("Entity type: person / device / ai / organization"),
+      content: z
+        .string()
+        .optional()
+        .describe("Relationship description (required for upsert)"),
+      action: z.string().describe("Operation: upsert / delete"),
     },
-    handler: async (args) => client.request('POST', '/relationships/update', args),
+    handler: async (args) =>
+      client.request("POST", "/relationships/update", args),
   },
 
   // ── get_current_time ────────────────────────────────────────
   {
-    name: 'get_current_time',
-    description: '現在時刻を取得する（JST）。Being API 呼び出し不要のローカル実装。',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
+    name: "get_current_time",
+    description: "Get current time in Asia/Tokyo timezone.",
+    inputSchema: {},
     handler: async () => ({
-      time: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }),
+      time: new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }),
       iso: new Date().toISOString(),
-      timezone: 'Asia/Tokyo',
+      timezone: "Asia/Tokyo",
     }),
   },
 
   // ── trigger_patrol ──────────────────────────────────────────
   {
-    name: 'trigger_patrol',
-    description: '巡回を実行する。marker 以降の会話から scene を抽出し、記憶ノードを生成する。LLM_API_KEY 環境変数が必要。',
+    name: "trigger_patrol",
+    description:
+      "Run patrol — extract scenes from conversation and generate memory nodes. Requires LLM_API_KEY env var.",
     inputSchema: {
-      type: 'object',
-      properties: {
-        messages: {
-          type: 'array',
-          description: 'marker 以降の会話メッセージ配列（{role, content}[]）',
-          items: {
-            type: 'object',
-            properties: {
-              role: { type: 'string' },
-              content: { type: 'string' },
-            },
-          },
-        },
-        marker_id: { type: 'string', description: '前回の巡回マーカーID（初回は省略）' },
-      },
-      required: ['messages'],
+      messages: z
+        .array(
+          z.object({
+            role: z.string(),
+            content: z.string(),
+          })
+        )
+        .describe("Conversation messages since last marker ({role, content}[])"),
+      marker_id: z
+        .string()
+        .optional()
+        .describe("Previous patrol marker ID (omit for first run)"),
     },
-    handler: async (args) => client.request('POST', '/patrol/trigger', args, true),
+    handler: async (args) =>
+      client.request("POST", "/patrol/trigger", args, true),
   },
 ]
