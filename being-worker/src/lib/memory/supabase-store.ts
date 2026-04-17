@@ -49,6 +49,9 @@ export function createSupabaseMemoryStore(
         .select('id, scene, feeling, importance, cluster_id, themes, emotion, session_count, status, fresh, pinned, needs_feeling, reactivation_count, last_activated, created_at')
         .eq('user_id', userId)
 
+      // #791: being_id フィルタ
+      if (beingId) query = query.eq('being_id', beingId)
+
       if (filter.fresh !== undefined) query = query.eq('fresh', filter.fresh)
       if (filter.pinned !== undefined) query = query.eq('pinned', filter.pinned)
       if (filter.clusterId) query = query.eq('cluster_id', filter.clusterId)
@@ -76,11 +79,14 @@ export function createSupabaseMemoryStore(
 
     async getNodesByIds(nodeIds: string[]): Promise<MemoryNode[]> {
       if (nodeIds.length === 0) return []
-      const { data, error } = await supabase
+      let query = supabase
         .from('memory_nodes')
         .select('id, scene, feeling, importance, cluster_id, themes, emotion, session_count, status, fresh, pinned, needs_feeling, reactivation_count, last_activated, created_at')
         .eq('user_id', userId)
         .in('id', nodeIds)
+      // #791: being_id フィルタ
+      if (beingId) query = query.eq('being_id', beingId)
+      const { data, error } = await query
       if (error) throw new Error(`getNodesByIds failed: ${error.message}`)
       return (data as MemoryNode[] | null) ?? []
     },
@@ -150,52 +156,63 @@ export function createSupabaseMemoryStore(
 
     async deleteNodes(nodeIds: string[]): Promise<void> {
       if (nodeIds.length === 0) return
-      const { error } = await supabase
+      let query = supabase
         .from('memory_nodes')
         .delete()
         .eq('user_id', userId)
         .in('id', nodeIds)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`deleteNodes failed: ${error.message}`)
     },
 
     async updateNodes(nodeIds: string[], updates: MemoryNodeUpdate): Promise<void> {
       if (nodeIds.length === 0) return
-      const { error } = await supabase
+      let query = supabase
         .from('memory_nodes')
         .update(updates)
         .eq('user_id', userId)
         .in('id', nodeIds)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`updateNodes failed: ${error.message}`)
     },
 
     // ── clusters ──
 
     async getClusters(): Promise<Cluster[]> {
-      const { data, error } = await supabase
+      let query = supabase
         .from('clusters')
         .select('id, name, level, digest, vector, parent_id, is_parent')
         .eq('user_id', userId)
+      // #791: being_id フィルタ
+      if (beingId) query = query.eq('being_id', beingId)
+      const { data, error } = await query
       if (error) throw new Error(`getClusters failed: ${error.message}`)
       return (data as Cluster[] | null) ?? []
     },
 
     async getCluster(clusterId: string): Promise<Cluster | null> {
-      const { data, error } = await supabase
+      let query = supabase
         .from('clusters')
         .select('id, name, level, digest, vector, parent_id, is_parent')
         .eq('id', clusterId)
         .eq('user_id', userId)
-        .single()
+      // #791: being_id フィルタ
+      if (beingId) query = query.eq('being_id', beingId)
+      const { data, error } = await query.single()
       if (error) return null
       return data as Cluster | null
     },
 
     async updateClusterVector(clusterId: string, vector: number[]): Promise<void> {
-      const { error } = await supabase
+      let query = supabase
         .from('clusters')
         .update({ vector })
         .eq('id', clusterId)
         .eq('user_id', userId)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`updateClusterVector failed: ${error.message}`)
     },
 
@@ -209,6 +226,8 @@ export function createSupabaseMemoryStore(
         query_embedding: queryVector,
         match_threshold: threshold,
         match_count: topK,
+        // #791: being_id フィルタ
+        ...(beingId ? { p_being_id: beingId } : {}),
       })
       if (error) throw new Error(`findSimilarClusters failed: ${error.message}`)
       return (data as Array<{ id: string; name: string; similarity: number }> | null) ?? []
@@ -221,11 +240,13 @@ export function createSupabaseMemoryStore(
       if (updates.parent_id !== undefined) row.parent_id = updates.parent_id
       if (updates.vector !== undefined) row.vector = updates.vector
       if (updates.is_parent !== undefined) row.is_parent = updates.is_parent
-      const { error } = await supabase
+      let query = supabase
         .from('clusters')
         .update(row)
         .eq('id', clusterId)
         .eq('user_id', userId)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`updateCluster failed: ${error.message}`)
     },
 
@@ -249,20 +270,24 @@ export function createSupabaseMemoryStore(
     },
 
     async deleteCluster(clusterId: string): Promise<void> {
-      const { error } = await supabase
+      let query = supabase
         .from('clusters')
         .delete()
         .eq('id', clusterId)
         .eq('user_id', userId)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`deleteCluster failed: ${error.message}`)
     },
 
     async updateNodeCluster(nodeId: string, clusterId: string | null): Promise<void> {
-      const { error } = await supabase
+      let query = supabase
         .from('memory_nodes')
         .update({ cluster_id: clusterId })
         .eq('id', nodeId)
         .eq('user_id', userId)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`updateNodeCluster failed: ${error.message}`)
     },
 
@@ -275,28 +300,33 @@ export function createSupabaseMemoryStore(
       if (delta <= 0) return
       // 個別UPDATEで確実に delta 加算
       for (const nodeId of nodeIds) {
-        const { data: node } = await supabase
+        let selectQuery = supabase
           .from('memory_nodes')
           .select('reactivation_count')
           .eq('id', nodeId)
           .eq('user_id', userId)
-          .single()
+        if (beingId) selectQuery = selectQuery.eq('being_id', beingId)
+        const { data: node } = await selectQuery.single()
         if (node) {
-          await supabase
+          let updateQuery = supabase
             .from('memory_nodes')
             .update({ reactivation_count: ((node as { reactivation_count: number }).reactivation_count ?? 0) + delta })
             .eq('id', nodeId)
             .eq('user_id', userId)
+          if (beingId) updateQuery = updateQuery.eq('being_id', beingId)
+          await updateQuery
         }
       }
     },
 
     async updateNodeStatus(nodeId: string, status: 'active' | 'dying' | 'dead'): Promise<void> {
-      const { error } = await supabase
+      let query = supabase
         .from('memory_nodes')
         .update({ status })
         .eq('id', nodeId)
         .eq('user_id', userId)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`updateNodeStatus failed: ${error.message}`)
     },
 
@@ -496,10 +526,12 @@ export function createSupabaseMemoryStore(
     // ── session_snapshot ──
 
     async getSessionSnapshot(): Promise<SessionSnapshot | null> {
-      const { data, error } = await supabase
+      let query = supabase
         .from('session_snapshot')
         .select('id, content, created_at')
         .eq('user_id', userId)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -508,17 +540,19 @@ export function createSupabaseMemoryStore(
     },
 
     async deleteSessionSnapshot(): Promise<void> {
-      const { error } = await supabase
+      let query = supabase
         .from('session_snapshot')
         .delete()
         .eq('user_id', userId)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`deleteSessionSnapshot failed: ${error.message}`)
     },
 
     async createSessionSnapshot(content: string): Promise<void> {
       const { error } = await supabase
         .from('session_snapshot')
-        .insert({ user_id: userId, content })
+        .insert({ user_id: userId, content, ...(beingId ? { being_id: beingId } : {}) })
       if (error) throw new Error(`createSessionSnapshot failed: ${error.message}`)
     },
 
@@ -650,12 +684,13 @@ export function createSupabaseMemoryStore(
     // ── relationships ──
 
     // #471: partnerType 対応 — パートナーごとのプロフィールに紐づけ
+    // #844: being_id 優先（beingId がある場合は being_id でフィルタ）
     async getRelationships(partnerType?: string): Promise<RelationshipEntry[]> {
       let query = supabase
         .from('relationships')
         .select('id, person_name, description')
         .eq('user_id', userId)
-      if (partnerType) query = query.eq('partner_type', partnerType)
+      if (beingId) query = query.eq('being_id', beingId)
       const { data, error } = await query
       if (error) throw new Error(`getRelationships failed: ${error.message}`)
       return (data as RelationshipEntry[] | null) ?? []
@@ -667,7 +702,7 @@ export function createSupabaseMemoryStore(
         .select('id, person_name, description')
         .eq('user_id', userId)
         .eq('person_name', personName)
-      if (partnerType) query = query.eq('partner_type', partnerType)
+      if (beingId) query = query.eq('being_id', beingId)
       const { data } = await query.maybeSingle()
       return data as RelationshipEntry | null
     },
@@ -682,8 +717,9 @@ export function createSupabaseMemoryStore(
             person_name: personName,
             description,
             updated_at: new Date().toISOString(),
+            being_id: beingId,
           },
-          { onConflict: 'user_id,partner_type,person_name' }
+          { onConflict: 'user_id,being_id,person_name' }
         )
       if (error) throw new Error(`upsertRelationship failed: ${error.message}`)
     },
@@ -694,52 +730,59 @@ export function createSupabaseMemoryStore(
         .delete()
         .eq('user_id', userId)
         .eq('person_name', personName)
-      if (partnerType) query = query.eq('partner_type', partnerType)
+      if (beingId) query = query.eq('being_id', beingId)
       await query
     },
 
     // ── notes ──
 
     async getUnreadNotes(): Promise<NoteEntry[]> {
-      const { data, error } = await supabase
+      let query = supabase
         .from('notes')
         .select('id, content, type')
         .eq('user_id', userId)
         .eq('read', false)
         .in('type', ['note', 'scene'])
-        .order('created_at', { ascending: true })
+      // #791: being_id フィルタ
+      if (beingId) query = query.eq('being_id', beingId)
+      const { data, error } = await query.order('created_at', { ascending: true })
       if (error) throw new Error(`getUnreadNotes failed: ${error.message}`)
       return (data as NoteEntry[] | null) ?? []
     },
 
     async markNotesRead(noteIds: string[]): Promise<void> {
       if (noteIds.length === 0) return
-      const { error } = await supabase
+      let query = supabase
         .from('notes')
         .update({ read: true })
         .eq('user_id', userId)
         .in('id', noteIds)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`markNotesRead failed: ${error.message}`)
     },
 
     async getAllNotes(): Promise<NoteEntry[]> {
-      const { data, error } = await supabase
+      let query = supabase
         .from('notes')
         .select('id, content, read, created_at, type')
         .eq('user_id', userId)
         .in('type', ['note', 'scene'])
-        .order('created_at', { ascending: false })
-        .limit(50)
+      // #791: being_id フィルタ
+      if (beingId) query = query.eq('being_id', beingId)
+      const { data, error } = await query.order('created_at', { ascending: false }).limit(50)
       if (error) throw new Error(`getAllNotes failed: ${error.message}`)
       return (data as NoteEntry[] | null) ?? []
     },
 
     async updateNoteContent(id: string, content: string): Promise<void> {
-      const { error } = await supabase
+      let query = supabase
         .from('notes')
         .update({ content })
         .eq('user_id', userId)
         .eq('id', id)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`updateNoteContent failed: ${error.message}`)
     },
 
@@ -754,21 +797,25 @@ export function createSupabaseMemoryStore(
     },
 
     async deleteNoteEntry(id: string): Promise<void> {
-      const { error } = await supabase
+      let query = supabase
         .from('notes')
         .delete()
         .eq('user_id', userId)
         .eq('id', id)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`deleteNoteEntry failed: ${error.message}`)
     },
 
     async getSceneNotes(): Promise<NoteEntry[]> {
-      const { data, error } = await supabase
+      let query = supabase
         .from('notes')
         .select('id, content, read, created_at, type')
         .eq('user_id', userId)
         .eq('type', 'scene')
-        .order('created_at', { ascending: true })
+      // #791: being_id フィルタ
+      if (beingId) query = query.eq('being_id', beingId)
+      const { data, error } = await query.order('created_at', { ascending: true })
       if (error) throw new Error(`getSceneNotes failed: ${error.message}`)
       return (data as NoteEntry[] | null) ?? []
     },
@@ -829,41 +876,49 @@ export function createSupabaseMemoryStore(
 
     async deleteNotesByIds(ids: string[]): Promise<void> {
       if (ids.length === 0) return
-      const { error } = await supabase
+      let query = supabase
         .from('notes')
         .delete()
         .eq('user_id', userId)
         .in('id', ids)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
       if (error) throw new Error(`deleteNotesByIds failed: ${error.message}`)
     },
 
     // ── souls ──
 
+    // #854: being_id 優先（beingId がある場合は being_id でフィルタ、ない場合は partner_type）
     async getSoul(partnerType: string): Promise<Soul | null> {
-      const { data } = await supabase
+      let query = supabase
         .from('souls')
         .select('name, personality, voice, values, backstory, inner_world, examples, think_md, model, preference, user_call_name')
         .eq('user_id', userId)
-        .eq('partner_type', partnerType)
-        .single()
+      if (beingId) query = query.eq('being_id', beingId)
+      else query = query.eq('partner_type', partnerType)
+      const { data } = await query.single()
       return data as Soul | null
     },
 
     async updateSoulThinkMd(partnerType: string, thinkMd: string): Promise<void> {
-      const { error } = await supabase
+      let query = supabase
         .from('souls')
         .update({ think_md: thinkMd })
         .eq('user_id', userId)
-        .eq('partner_type', partnerType)
+      if (beingId) query = query.eq('being_id', beingId)
+      else query = query.eq('partner_type', partnerType)
+      const { error } = await query
       if (error) throw new Error(`updateSoulThinkMd failed: ${error.message}`)
     },
 
     async updateSoulModel(partnerType: string, model: string | null): Promise<void> {
-      const { error } = await supabase
+      let query = supabase
         .from('souls')
         .update({ model })
         .eq('user_id', userId)
-        .eq('partner_type', partnerType)
+      if (beingId) query = query.eq('being_id', beingId)
+      else query = query.eq('partner_type', partnerType)
+      const { error } = await query
       if (error) throw new Error(`updateSoulModel failed: ${error.message}`)
     },
 
@@ -873,11 +928,13 @@ export function createSupabaseMemoryStore(
       patch: Partial<Pick<Soul, 'personality' | 'voice' | 'values' | 'backstory' | 'inner_world' | 'examples'>>
     ): Promise<void> {
       if (Object.keys(patch).length === 0) return
-      const { error } = await supabase
+      let query = supabase
         .from('souls')
         .update({ ...patch, updated_at: new Date().toISOString() })
         .eq('user_id', userId)
-        .eq('partner_type', partnerType)
+      if (beingId) query = query.eq('being_id', beingId)
+      else query = query.eq('partner_type', partnerType)
+      const { error } = await query
       if (error) throw new Error(`updateSoulFields failed: ${error.message}`)
     },
 
@@ -961,7 +1018,7 @@ export function createSupabaseMemoryStore(
         .select('date, content')
         .eq('user_id', userId)
         .eq('date', date)
-      if (partnerType) query = query.eq('partner_type', partnerType)
+      if (beingId) query = query.eq('being_id', beingId)
       const { data, error } = await query.single()
       if (error && error.code !== 'PGRST116') throw new Error(`getDiary failed: ${error.message}`)
       return data as DiaryEntry | null
@@ -974,7 +1031,7 @@ export function createSupabaseMemoryStore(
         .eq('user_id', userId)
         .order('date', { ascending: false })
         .limit(limit)
-      if (partnerType) query = query.eq('partner_type', partnerType)
+      if (beingId) query = query.eq('being_id', beingId)
       const { data, error } = await query
       if (error) throw new Error(`getRecentDiaries failed: ${error.message}`)
       return (data as DiaryEntry[] | null) ?? []
@@ -987,7 +1044,9 @@ export function createSupabaseMemoryStore(
         .from('partner_rules')
         .select('id, partner_type, category, title, content, sort_order, enabled')
         .eq('user_id', userId)
-        .or(`partner_type.eq.shared,partner_type.eq.${partnerType}`)
+        .or(beingId
+          ? `being_id.is.null,being_id.eq.${beingId}`
+          : `partner_type.eq.shared,partner_type.eq.${partnerType}`)
         .eq('enabled', true)
         .order('sort_order', { ascending: true })
       if (error) throw new Error(`getRules failed: ${error.message}`)
@@ -999,7 +1058,9 @@ export function createSupabaseMemoryStore(
         .from('partner_rules')
         .select('id, partner_type, category, title, content, sort_order, enabled')
         .eq('user_id', userId)
-        .or(`partner_type.eq.shared,partner_type.eq.${partnerType}`)
+        .or(beingId
+          ? `being_id.is.null,being_id.eq.${beingId}`
+          : `partner_type.eq.shared,partner_type.eq.${partnerType}`)
         .order('sort_order', { ascending: true })
       if (error) throw new Error(`getAllRules failed: ${error.message}`)
       return (data as PartnerRule[] | null) ?? []

@@ -210,7 +210,7 @@ async function buildBlock1A(
         soul.inner_world ? `\n## 感情\n${soul.inner_world}` : '',
         soul.examples ? `\n## 声の例\n${soul.examples}` : '',
       ].filter(Boolean).join('\n').trim()
-    : `# SOUL\n- 名前: ${partnerType === 'liz' ? 'リズ' : 'ジン'}\n- 性格: 親しみやすく、誠実なパートナー`
+    : `# SOUL\n- 名前: パートナー\n- 性格: 親しみやすく、誠実なパートナー`
 
   const userSection = `
 # ユーザー情報
@@ -439,6 +439,8 @@ export interface BuildSystemPromptParams {
   userMessage?: string  // #596: auto-recall移行後は未使用
   supabase?: SupabaseClient
   userId?: string
+  /** #859: party_messages の絞り込みに使うBeing ID */
+  beingId?: string
   /** 内部処理（haiku-recall）に使うモデル名（省略時はenv or Anthropic Haiku） */
   internalModel?: string
   /** #370: 事前取得済みのsoulData。渡すとgetSoulのDB呼び出しをスキップ */
@@ -451,7 +453,7 @@ export interface BuildSystemPromptParams {
 export async function buildSystemPrompt(
   params: BuildSystemPromptParams
 ): Promise<SystemPromptResult> {
-  const { store, partnerType, supabase, userId, soulData } = params
+  const { store, partnerType, supabase, userId, beingId, soulData } = params
 
   // 全DB呼び出し + パーティメッセージ + capability を1段で並列実行
   const parallelTasks = [
@@ -470,13 +472,13 @@ export async function buildSystemPrompt(
     // freshノード取得を1段目に引き上げ（buildBlock2Bの中で直列にならないように）
     store.getNodes({ fresh: true, orderBy: 'created_at', orderDirection: 'desc', limit: 10 })
       .then((nodes) => ({ nodes, freshNodeIds: nodes.map((n) => n.id) })),
-    // パーティメッセージ（supabase + userId がある場合のみ実際のクエリを走らせる）
-    (supabase && userId)
+    // パーティメッセージ（supabase + userId + beingId がある場合のみ実際のクエリを走らせる）
+    (supabase && userId && beingId)
       ? supabase
           .from('party_messages')
           .select('id, from_partner, content, created_at')
           .eq('user_id', userId)
-          .eq('to_partner', partnerType)
+          .eq('to_being_id', beingId)
           .eq('read', false)
           .order('created_at', { ascending: true })
           .then((res) => res, () => ({ data: null }))

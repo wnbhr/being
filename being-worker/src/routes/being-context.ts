@@ -80,6 +80,7 @@ export const beingContextRoute: FastifyPluginAsync = async (app) => {
         partnerType,
         supabase,
         userId,
+        beingId: being_id,
       })
 
       // 5. spec-39 形式に変換

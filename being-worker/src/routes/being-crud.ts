@@ -60,7 +60,7 @@ export const beingCrudRoute: FastifyPluginAsync = async (app) => {
     // デフォルトSOUL自動生成（失敗してもBeing作成自体は成功扱い）
     const { error: soulError } = await supabase
       .from('souls')
-      .insert({ being_id: being.id, name, partner_type: name.toLowerCase() })
+      .insert({ being_id: being.id, name, partner_type: 'custom', user_id: userId })
     if (soulError) {
       console.warn(`[being-crud] soul insert failed for being ${being.id}:`, soulError.message)
     }

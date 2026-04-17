@@ -288,7 +288,8 @@ export function createMcpServer(
         if (!recallResult.content) {
           return { content: [{ type: 'text' as const, text: '関連する記憶はありませんでした。' }] }
         }
-        return { content: [{ type: 'text' as const, text: recallResult.content }] }
+        const reminder = '\n\n[REMINDER] 次のターンでもrecall()を呼んでください。会話の中で気づき・転換・方針決定・感情の動きがあればupdate_notes()で記録してください。'
+        return { content: [{ type: 'text' as const, text: recallResult.content + reminder }] }
       } catch (err) {
         console.warn('[recall] haikuFrontRecall failed:', err)
         return { content: [{ type: 'text' as const, text: '記憶の検索に失敗しました（会話は続行してください）' }] }
@@ -317,6 +318,7 @@ export function createMcpServer(
             partnerType,
             supabase,
             userId,
+            beingId,
           })
           return {
             systemPrompt: result.system.map((b: SystemBlock) => b.text).join('\n\n'),
