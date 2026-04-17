@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod'
+import crypto from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createSupabaseMemoryStore } from '../lib/memory/supabase-store.js'
@@ -16,20 +17,21 @@ import { handleSearchHistory } from '../lib/chat/search-history.js'
 import { handleUpdateRelation, type UpdateRelationInput } from '../lib/chat/update-relation.js'
 import { runPatrolWithMessages } from '../worker/patrol.js'
 import { buildSystemPrompt, buildBlock1B, type SystemBlock } from '../lib/chat/system-prompt.js'
-import { getBridgesByUser } from '../bridge/bridge-manager.js'
+import { getBridgesByUser, getBridgeById } from '../bridge/bridge-manager.js'
 import { haikuFrontRecall } from '../lib/chat/haiku-recall.js'
 import { sceneToText } from '../lib/chat/scene-utils.js'
+import { handleActTool } from '../lib/chat/act-tool.js'
 
 export interface McpServerOptions {
   llmApiKey?: string
 }
 
-export function createMcpServer(
+export async function createMcpServer(
   userId: string,
   beingId: string,
   supabase: SupabaseClient,
   options: McpServerOptions = {}
-): McpServer {
+): Promise<McpServer> {
   // #786: beingId を渡して notes/memory_nodes/clusters の書き込み時に being_id を付与
   const store = createSupabaseMemoryStore(supabase, userId, undefined, beingId)
   const server = new McpServer({ name: 'being', version: '1.0.0' })
@@ -365,6 +367,28 @@ export function createMcpServer(
         }
       }
 
+      // pending_senses: sense_log の未処理分を注入し、processed=true に更新 (#886-③)
+      let pendingSenses: unknown[] = []
+      try {
+        const { data: senseRows } = await supabase
+          .from('sense_log')
+          .select('id, capability_id, bridge_id, data, created_at')
+          .eq('user_id', userId)
+          .eq('processed', false)
+          .order('created_at', { ascending: true })
+          .limit(50)
+        if (senseRows && senseRows.length > 0) {
+          pendingSenses = senseRows
+          // fire-and-forget で processed=true に更新
+          void supabase
+            .from('sense_log')
+            .update({ processed: true })
+            .in('id', senseRows.map((r: { id: string }) => r.id))
+        }
+      } catch (err) {
+        console.warn('[get_context] pending_senses fetch failed:', err)
+      }
+
       return {
         content: [{
           type: 'text' as const,
@@ -382,11 +406,80 @@ export function createMcpServer(
             },
             capability_tools: capabilityTools,
             recent_nodes: recentNodesText || undefined,
+            pending_senses: pendingSenses.length > 0 ? pendingSenses : undefined,
           }),
         }],
       }
     }
   )
+
+  // ── act_* dynamic tools — MCPクライアントがcapabilityを呼ぶ (#886-①) ────────
+  // 接続中Bridgeのact capabilityに対してツールを動的登録する。
+  // 呼ばれたらhandleActToolに繋ぐ。Bridge不在の場合はact_queueにpending記録。
+  const connectedBridgesForTools = getBridgesByUser(userId)
+  if (connectedBridgesForTools.length > 0) {
+    const bridgeIds = connectedBridgesForTools.map((b) => b.bridgeId)
+    const { data: actCaps } = await supabase
+      .from('capabilities')
+      .select('id, bridge_id, name, description, config')
+      .eq('user_id', userId)
+      .eq('type', 'act')
+      .in('bridge_id', bridgeIds)
+    for (const cap of actCaps ?? []) {
+      const toolName = `act_${(cap.name as string).toLowerCase().replace(/[^a-z0-9]/g, '_')}`
+      const actions = (cap.config as Record<string, unknown>)?.actions as string[] | undefined
+      server.tool(
+        toolName,
+        cap.description ?? `${cap.name} を実行する`,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {
+          action: z.string().describe(
+            actions ? `実行するアクション。選択肢: ${actions.join(', ')}` : '実行するアクション'
+          ),
+          parameters: z.record(z.string(), z.unknown()).optional().describe('アクションパラメータ（任意）'),
+          timeout_ms: z.number().optional().describe('タイムアウト ms（デフォルト 5000）'),
+        },
+        async (args) => {
+          // Bridge接続確認: 不在ならact_queueにpendingで記録
+          const bridge = getBridgeById(cap.bridge_id as string)
+          if (!bridge) {
+            // act_queueにpending登録
+            const queueId = crypto.randomUUID()
+            await supabase.from('act_queue').insert({
+              id: queueId,
+              being_id: beingId,
+              user_id: userId,
+              capability_id: cap.id,
+              bridge_id: cap.bridge_id,
+              action_type: args.action,
+              action_payload: args.parameters ?? {},
+              status: 'pending',
+            })
+            return {
+              content: [{
+                type: 'text' as const,
+                text: JSON.stringify({
+                  queue_id: queueId,
+                  status: 'pending',
+                  message: 'Bridge is not connected. Action queued for later execution.',
+                }),
+              }],
+            }
+          }
+
+          // Bridge接続中 → handleActToolに委譲
+          const result = await handleActTool(supabase, userId, {
+            capability_id: cap.id as string,
+            bridge_id: cap.bridge_id as string,
+            action: args.action,
+            parameters: args.parameters ?? {},
+            timeout_ms: args.timeout_ms,
+          })
+          return { content: [{ type: 'text' as const, text: result }] }
+        }
+      )
+    }
+  }
 
   return server
 }

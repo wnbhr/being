@@ -17,6 +17,8 @@ import { beingContextRoute } from './routes/being-context.js'
 import { beingPatrolRoute } from './routes/being-patrol.js'
 import { capabilitiesRoute } from './routes/capabilities.js'
 import { senseRoute } from './routes/sense.js'
+import { senseInputRoute } from './routes/sense-input.js'
+import { actQueueRoute } from './routes/act-queue.js'
 import { beingIdentityRoute } from './routes/being-identity.js'
 import { mcpRoute } from './routes/mcp.js'
 import { beingExtensionsRoute } from './routes/being-extensions.js'
@@ -182,6 +184,8 @@ app.register(beingContextRoute)
 app.register(beingPatrolRoute)
 app.register(capabilitiesRoute)
 app.register(senseRoute)
+app.register(senseInputRoute)
+app.register(actQueueRoute)
 app.register(beingIdentityRoute)
 app.register(mcpRoute)
 app.register(beingExtensionsRoute)
