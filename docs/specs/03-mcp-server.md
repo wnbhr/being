@@ -80,8 +80,9 @@ Takes no parameters.
 | `metadata.soul_name` | Soul display name |
 | `metadata.model_recommendation` | Suggested LLM model (`claude-sonnet-4-6`) |
 | `metadata.cache_guidance` | Hints for prompt caching — `system_prompt` is stable; `snapshot` is semi-stable |
-| `capability_tools` | Array of `{ name, description }` for `act`-type capabilities registered by connected Bridges |
+| `capability_tools` | Array of `{ name, description }` for `act`-type capabilities registered by connected Bridges. Each capability also has a corresponding `act_*` MCP tool registered dynamically on the server (see below). |
 | `recent_nodes` | Up to 5 recently activated memory nodes as plain text |
+| `pending_senses` | _(optional)_ Array of unprocessed sense events from `sense_log`. Present only when there are unprocessed rows. Each entry includes `id`, `capability_id`, `bridge_id`, `data`, `created_at`. Rows are marked `processed=true` immediately after being returned. |
 
 ---
 
@@ -241,6 +242,31 @@ Returns the current datetime in the specified timezone.
 ```json
 { "datetime": "2026/04/14（火） 16:30:00", "iso": "2026-04-14T07:30:00.000Z", "timezone": "Asia/Tokyo" }
 ```
+
+---
+
+### `act_*` — Dynamic Act Tools
+
+When `createMcpServer` is initialized, it queries the `capabilities` table for `act`-type capabilities belonging to **currently connected** Bridges. For each matching capability, a tool is registered dynamically:
+
+- **Tool name**: `act_${cap.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`
+- **Description**: capability's `description` field (or `"<name> を実行する"` as fallback)
+- **Parameters**:
+
+  | Parameter | Type | Required | Description |
+  |-----------|------|----------|-------------|
+  | `action` | `string` | ✅ | Action to execute. When `config.actions` is set, valid values are listed in the description. |
+  | `parameters` | `object` | — | Action-specific key-value payload |
+  | `timeout_ms` | `number` | — | Timeout in milliseconds (default: 5000) |
+
+**Execution flow:**
+1. If the Bridge is connected → delegates to `handleActTool()` → result returned as JSON.
+2. If the Bridge is **not** connected → queues the action in `act_queue` with `status='pending'`. Returns:
+   ```json
+   { "queue_id": "<uuid>", "status": "pending", "message": "Bridge is not connected. Action queued for later execution." }
+   ```
+
+These tools are not listed in `capability_tools` (which is a plain-object summary for the LLM client); they are fully registered as callable MCP tools on the server.
 
 ---
 
