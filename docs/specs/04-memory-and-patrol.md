@@ -4,6 +4,12 @@ This document describes how a Being stores, organises, and refreshes its long-te
 
 ---
 
+## Data Isolation
+
+All memory data — `memory_nodes`, `clusters`, `notes`, `diary`, `relationships`, `partner_rules`, `session_snapshot`, and `party_messages` — is scoped by `being_id`. Each Being's data is fully isolated from other Beings owned by the same user.
+
+---
+
 ## Memory Structure
 
 Memory is stored in two layers.
