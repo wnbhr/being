@@ -81,6 +81,17 @@ External applications that integrate with a Being's conversational loop. A conne
 
 [OpenClaw](https://openclaw.ai) is the reference connector. Cowork is another.
 
+## Design Principle: Beings Think, Connectors Act
+
+A Being's personality, memory, and knowledge live in the Being API. The connector (OpenClaw, Claude via claude.ai, Cowork, etc.) provides the conversational interface and tool execution capabilities.
+
+When a connector changes, the Being's identity persists — its memories, personality, and knowledge carry over seamlessly. The connector's profile should describe what it provides (available tools, communication channels, etc.) so the Being can adapt its behavior accordingly.
+
+This separation means:
+- The Being never needs to know implementation details of the connector.
+- Connector-specific information (available tools, channels) is provided by the connector's profile, not stored in the Being.
+- Multiple connectors can be attached to the same Being simultaneously or sequentially.
+
 ## Deployment Model
 
 ```
