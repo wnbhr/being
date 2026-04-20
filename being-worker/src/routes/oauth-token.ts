@@ -44,19 +44,89 @@ interface TokenRequestBody {
   refresh_token?: string
 }
 
+type ClientAuthResult =
+  | { clientId: string }
+  | { error: string; error_description: string; status: number }
+
+/**
+ * Authenticate client from request.
+ * Supports:
+ *   - Basic auth header: Authorization: Basic base64(client_id:client_secret)
+ *   - Body client_id (public clients)
+ *
+ * For confidential clients (client_secret_basic), validates secret against SHA-256 hash in DB.
+ */
+async function authenticateClient(
+  request: import('fastify').FastifyRequest<{ Body: TokenRequestBody }>,
+): Promise<ClientAuthResult> {
+  const authHeader = request.headers.authorization
+
+  if (authHeader?.startsWith('Basic ')) {
+    const decoded = Buffer.from(authHeader.slice(6), 'base64').toString()
+    const colonIdx = decoded.indexOf(':')
+    if (colonIdx === -1) {
+      return { error: 'invalid_client', error_description: 'Invalid Basic auth header', status: 401 }
+    }
+    const clientId = decoded.slice(0, colonIdx)
+    const clientSecret = decoded.slice(colonIdx + 1)
+
+    if (!clientId) {
+      return { error: 'invalid_client', error_description: 'client_id missing in Basic auth', status: 401 }
+    }
+
+    // Look up client and verify secret
+    const { data: clientRow, error: fetchError } = await supabase
+      .from('oauth_clients')
+      .select('client_id, token_endpoint_auth_method, client_secret')
+      .eq('client_id', clientId)
+      .single()
+
+    if (fetchError || !clientRow) {
+      return { error: 'invalid_client', error_description: 'Client not found', status: 401 }
+    }
+
+    if (clientRow.token_endpoint_auth_method === 'client_secret_basic') {
+      if (!clientSecret) {
+        return { error: 'invalid_client', error_description: 'client_secret required', status: 401 }
+      }
+      const secretHash = crypto.createHash('sha256').update(clientSecret).digest('hex')
+      if (secretHash !== clientRow.client_secret) {
+        return { error: 'invalid_client', error_description: 'Invalid client_secret', status: 401 }
+      }
+    }
+
+    return { clientId }
+  }
+
+  // Fallback: body client_id (public client)
+  const bodyClientId = (request.body as TokenRequestBody)?.client_id
+  if (bodyClientId) {
+    return { clientId: bodyClientId }
+  }
+
+  return { error: 'invalid_client', error_description: 'client_id is required', status: 400 }
+}
+
 export const oauthTokenRoute: FastifyPluginAsync = async (app) => {
   // @fastify/formbody は index.ts でグローバルに登録済みのため、ここでは登録しない
 
   app.post<{ Body: TokenRequestBody }>('/oauth/token', async (request, reply) => {
-    const { grant_type, code, redirect_uri, client_id, code_verifier, refresh_token } = request.body ?? {}
+    const { grant_type, code, redirect_uri, code_verifier, refresh_token } = request.body ?? {}
 
     if (!grant_type) {
       return reply.code(400).send({ error: 'unsupported_grant_type', error_description: 'grant_type is required' })
     }
 
+    // Authenticate client (supports both Basic header and body client_id)
+    const authResult = await authenticateClient(request)
+    if ('error' in authResult) {
+      return reply.code(authResult.status).send({ error: authResult.error, error_description: authResult.error_description })
+    }
+    const client_id = authResult.clientId
+
     // ── authorization_code ──────────────────────────────────────────────────
     if (grant_type === 'authorization_code') {
-      if (!code || !redirect_uri || !client_id || !code_verifier) {
+      if (!code || !redirect_uri || !code_verifier) {
         return reply.code(400).send({ error: 'invalid_request', error_description: 'Missing required parameters' })
       }
 
@@ -173,7 +243,7 @@ export const oauthTokenRoute: FastifyPluginAsync = async (app) => {
 
     // ── refresh_token ────────────────────────────────────────────────────────
     if (grant_type === 'refresh_token') {
-      if (!refresh_token || !client_id) {
+      if (!refresh_token) {
         return reply.code(400).send({ error: 'invalid_request', error_description: 'Missing required parameters' })
       }
 
