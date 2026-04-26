@@ -58,9 +58,9 @@ Pass `X-LLM-API-Key: <anthropic_key>` to enable LLM-dependent features (patrol c
 |-----------|------|----------|-------------|
 | `user_message` | `string` | ✅ | The current user message to search against |
 
-**Returns:** A `<memory-recall>` block containing matched cluster names and top-3 active nodes per cluster, or an empty message if nothing matched.
+**Returns:** A `<memory-recall>` block containing shuffled fragments of `action` and `feeling` from matched nodes, with cluster boundaries intentionally blurred — mimicking human associative recall. Empty message if nothing matched.
 
-**Mechanism:** Embeds `user_message` with `text-embedding-3-small` (256-dim), calls `match_clusters` RPC, increments `reactivation_count` on returned nodes.
+**Mechanism:** Embeds `user_message` with `text-embedding-3-small` (256-dim), calls `match_clusters` RPC, collects top-3 active nodes per cluster, increments `reactivation_count` on all returned nodes, then shuffles `action`/`feeling` values across all nodes into a single fragment string.
 
 ---
 
@@ -105,11 +105,12 @@ Explore memory clusters. Without `cluster_id`, returns the cluster list. With `c
 
 ### `search_memory`
 
-Keyword search across `memory_nodes` without needing a cluster ID.
+Keyword search across `memory_nodes` without needing a cluster ID. Searches `action`, `feeling`, and `themes` fields.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `query` | `string` | ✅ | Partial-match keyword (case-insensitive) |
+| `query` | `string` | ✅ | Space-separated keywords. Each term is matched against `action`, `feeling`, and `themes` |
+| `mode` | `string` | — | `"or"` (default): any term matches. `"and"`: all terms must match |
 | `limit` | `number` | — | Max results (default 10, max 30) |
 
 **Returns:** Matched nodes ordered by `importance` desc, formatted as scene text lines.
