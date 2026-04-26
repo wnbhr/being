@@ -1,11 +1,12 @@
 /**
- * haiku-recall.ts — #32 Haikuフロント連想パイプライン
+ * haiku-recall.ts — #32 Haikuフロント連想パイプライン（断片モード）
  *
  * spec-31 (#598): Haikuキーワードマッチ → cosine類似度ベクトル検索に置き換え。
  * 1. ユーザーメッセージを OpenAI text-embedding-3-small でembedding
  * 2. findSimilarClusters() で類似クラスタを取得
  * 3. ヒットクラスタのノードを取得し reactivation_count をインクリメント
- * 4. <memory-recall> タグで返す（常駐ノードはget_context snapshotに移動）
+ * 4. 断片モード: action/feeling/themes をシャッフルして混ぜた <memory-recall> タグで返す
+ *    ノード境界をぼかすことで、人間の記憶想起に近い「ごちゃごちゃ」した形式にする
  *
  * #62: MemoryStore interface 経由に移行
  */
@@ -13,7 +14,7 @@
 import type { MemoryStore } from '../memory/types.js'
 import type { LLMProvider } from '../llm/types.js'
 import { embedText } from '../memory/embedding.js'
-import { sceneToText } from './scene-utils.js'
+import type { Scene } from './scene-utils.js'
 
 // ──────────────────────────────────────────────
 // 型定義
@@ -22,6 +23,38 @@ import { sceneToText } from './scene-utils.js'
 export interface HaikuRecallResult {
   /** <memory-recall>...</memory-recall> タグで包まれた文字列。ヒットなしなら空文字 */
   content: string
+}
+
+// ──────────────────────────────────────────────
+// 断片シャッフル
+// ──────────────────────────────────────────────
+
+/**
+ * 複数ノードの action / feeling / themes をばらして混ぜ、
+ * ノード境界を消した断片テキストを返す。
+ * 人間の記憶想起に近い「ごちゃごちゃ」した形式。
+ */
+function toFragments(nodes: Array<{ scene: Scene | null; feeling?: string | null; themes?: string[] | null }>): string {
+  const pieces: string[] = []
+
+  for (const n of nodes) {
+    if (n.scene?.action) pieces.push(n.scene.action)
+    if (n.feeling) pieces.push(n.feeling)
+    if (n.themes?.length) {
+      // themes は全部入れると冗長なので最大2つ
+      pieces.push(...n.themes.slice(0, 2))
+    }
+  }
+
+  if (pieces.length === 0) return ''
+
+  // Fisher-Yates シャッフル
+  for (let i = pieces.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[pieces[i], pieces[j]] = [pieces[j], pieces[i]]
+  }
+
+  return pieces.join(' / ')
 }
 
 // ──────────────────────────────────────────────
@@ -37,7 +70,7 @@ async function runVectorRecall(store: MemoryStore, userMessage: string): Promise
   if (matches.length === 0) return ''
 
   // 3. 各クラスタのノードを取得し、reactivation_count をインクリメント
-  const parts: string[] = []
+  const allNodes: Array<{ scene: Scene | null; feeling?: string | null; themes?: string[] | null }> = []
 
   for (const match of matches) {
     const cluster = await store.getCluster(match.id)
@@ -55,24 +88,14 @@ async function runVectorRecall(store: MemoryStore, userMessage: string): Promise
       await store.incrementReactivationCounts(nodes.map((n) => n.id)).catch((err) => {
         console.warn('[haiku-recall] incrementReactivationCounts failed (ignored):', err)
       })
+      allNodes.push(...nodes)
     }
-
-    const digestLine = cluster.digest ? `${cluster.digest}` : ''
-    const nodeLines = nodes
-      .map((n) => `- ${sceneToText(n.scene, n.feeling)}`)
-      .join('\n')
-
-    const section = [
-      `[${cluster.name}]${digestLine ? ` ${digestLine}` : ''}`,
-      nodeLines,
-    ]
-      .filter(Boolean)
-      .join('\n')
-
-    if (section) parts.push(section)
   }
 
-  return parts.join('\n\n')
+  if (allNodes.length === 0) return ''
+
+  // 4. 断片モード: 全ノードの action/feeling/themes をシャッフルして混ぜる
+  return toFragments(allNodes)
 }
 
 // ──────────────────────────────────────────────
