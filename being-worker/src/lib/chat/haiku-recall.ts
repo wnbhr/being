@@ -34,16 +34,12 @@ export interface HaikuRecallResult {
  * ノード境界を消した断片テキストを返す。
  * 人間の記憶想起に近い「ごちゃごちゃ」した形式。
  */
-function toFragments(nodes: Array<{ scene: Scene | null; feeling?: string | null; themes?: string[] | null }>): string {
+function toFragments(nodes: Array<{ scene: Scene | null; feeling?: string | null }>): string {
   const pieces: string[] = []
 
   for (const n of nodes) {
     if (n.scene?.action) pieces.push(n.scene.action)
     if (n.feeling) pieces.push(n.feeling)
-    if (n.themes?.length) {
-      // themes は全部入れると冗長なので最大2つ
-      pieces.push(...n.themes.slice(0, 2))
-    }
   }
 
   if (pieces.length === 0) return ''
@@ -70,7 +66,7 @@ async function runVectorRecall(store: MemoryStore, userMessage: string): Promise
   if (matches.length === 0) return ''
 
   // 3. 各クラスタのノードを取得し、reactivation_count をインクリメント
-  const allNodes: Array<{ scene: Scene | null; feeling?: string | null; themes?: string[] | null }> = []
+  const allNodes: Array<{ scene: Scene | null; feeling?: string | null }> = []
 
   for (const match of matches) {
     const cluster = await store.getCluster(match.id)
