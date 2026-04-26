@@ -30,11 +30,13 @@ export interface HaikuRecallResult {
 // ──────────────────────────────────────────────
 
 /**
- * 複数ノードの action / feeling / themes をばらして混ぜ、
+ * 複数ノードの action / feeling をばらして混ぜ、
  * ノード境界を消した断片テキストを返す。
  * 人間の記憶想起に近い「ごちゃごちゃ」した形式。
+ *
+ * @internal Exported for unit testing.
  */
-function toFragments(nodes: Array<{ scene: Scene | null; feeling?: string | null }>): string {
+export function toFragments(nodes: Array<{ scene: Scene | null; feeling?: string | null }>): string {
   const pieces: string[] = []
 
   for (const n of nodes) {

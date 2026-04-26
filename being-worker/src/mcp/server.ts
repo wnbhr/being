@@ -98,9 +98,25 @@ export async function createMcpServer(
         if (nodes.length === 0) {
           return { content: [{ type: 'text' as const, text: `「${args.query}」に関する記憶は見つかりませんでした。` }] }
         }
-        const lines = nodes.map(n =>
-          `- [${n.id}] ${sceneToText(n.scene as import('../lib/chat/scene-utils.js').Scene | null, n.feeling)}${n.themes ? ` (themes: ${(n.themes as string[]).join(', ')})` : ''}`
-        )
+
+        // どのフィールドにヒットしたかを判定するヘルパー
+        const terms = args.query.trim().split(/\s+/).filter(Boolean).map(t => t.toLowerCase())
+        const detectMatchedFields = (n: typeof nodes[number]): string[] => {
+          const fields: string[] = []
+          const action = (n.scene as { action?: string } | null)?.action?.toLowerCase() ?? ''
+          const feeling = (n.feeling ?? '').toLowerCase()
+          const themes = (n.themes as string[] | null) ?? []
+          if (terms.some(t => action.includes(t))) fields.push('action')
+          if (terms.some(t => feeling.includes(t))) fields.push('feeling')
+          if (terms.some(t => themes.some(th => th.toLowerCase().includes(t)))) fields.push('themes')
+          return fields
+        }
+
+        const lines = nodes.map(n => {
+          const matched = detectMatchedFields(n)
+          const matchTag = matched.length > 0 ? ` [matched: ${matched.join(',')}]` : ''
+          return `- [${n.id}]${matchTag} ${sceneToText(n.scene as import('../lib/chat/scene-utils.js').Scene | null, n.feeling)}${n.themes ? ` (themes: ${(n.themes as string[]).join(', ')})` : ''}`
+        })
         return { content: [{ type: 'text' as const, text: `記憶 ${nodes.length}件:\n${lines.join('\n')}` }] }
       } catch (err) {
         return { content: [{ type: 'text' as const, text: `error: ${String(err)}` }], isError: true }

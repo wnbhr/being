@@ -31,6 +31,41 @@ import type {
 } from './types.js'
 
 // ──────────────────────────────────────────────
+// 検索クエリ構築ヘルパー（ユニットテスト可能なよう export）
+// ──────────────────────────────────────────────
+
+/**
+ * PostgREST の or() フィルタ用に検索語をサニタイズする。
+ *
+ * - or() の構文記号: `,` `(` `)` `{` `}` `"` を除去
+ * - ilike のワイルドカード: `%` `_` をバックスラッシュでエスケープ
+ *
+ * @internal Exported for unit testing.
+ */
+export function sanitizeSearchTerm(term: string): string {
+  return term.replace(/[,(){}"]/g, '').replace(/[%_]/g, '\\$&')
+}
+
+/**
+ * 1検索語を action/feeling/themes 横断の or() clause 文字列に変換する。
+ * サニタイズ後に空になった場合は空文字を返す。
+ *
+ * 例: "記憶" → "scene->>action.ilike.%記憶%,feeling.ilike.%記憶%,themes.cs.{\"記憶\"}"
+ *
+ * @internal Exported for unit testing.
+ */
+export function buildSearchOrClause(term: string): string {
+  const safe = sanitizeSearchTerm(term)
+  if (!safe) return ''
+  // themes は string[] のため contains (cs) 構文を使い、配列値はダブルクォートで括る
+  return [
+    `scene->>action.ilike.%${safe}%`,
+    `feeling.ilike.%${safe}%`,
+    `themes.cs.{"${safe}"}`,
+  ].join(',')
+}
+
+// ──────────────────────────────────────────────
 // ファクトリ関数
 // ──────────────────────────────────────────────
 
@@ -62,25 +97,17 @@ export function createSupabaseMemoryStore(
       if (filter.searchQuery) {
         const terms = filter.searchQuery.trim().split(/\s+/).filter(Boolean)
         const mode = filter.searchMode ?? 'or'
+
         if (mode === 'and') {
           // AND: 全ての語が action / feeling / themes のいずれかに含まれる
           for (const term of terms) {
-            const escaped = term.replace(/[%_]/g, '\\$&')
-            query = query.or(
-              `scene->>action.ilike.%${escaped}%,feeling.ilike.%${escaped}%,themes.cs.{${escaped}}`
-            )
+            const clause = buildSearchOrClause(term)
+            if (clause) query = query.or(clause)
           }
         } else {
           // OR: いずれかの語が action / feeling / themes のいずれかに含まれる
-          const orParts = terms.flatMap((term) => {
-            const escaped = term.replace(/[%_]/g, '\\$&')
-            return [
-              `scene->>action.ilike.%${escaped}%`,
-              `feeling.ilike.%${escaped}%`,
-              `themes.cs.{${escaped}}`,
-            ]
-          })
-          query = query.or(orParts.join(','))
+          const orParts = terms.map(buildSearchOrClause).filter(Boolean)
+          if (orParts.length > 0) query = query.or(orParts.join(','))
         }
       }
 
