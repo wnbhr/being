@@ -8,6 +8,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { PLAN_LIMITS } from '../constants.js'
+import { encrypt, decrypt } from '../utils/encryption.js'
 import type {
   MemoryStore,
   MemoryNode,
@@ -29,6 +30,41 @@ import type {
   PinnedContext,
   SessionSnapshot,
 } from './types.js'
+
+// ──────────────────────────────────────────────
+// 検索クエリ構築ヘルパー（ユニットテスト可能なよう export）
+// ──────────────────────────────────────────────
+
+/**
+ * PostgREST の or() フィルタ用に検索語をサニタイズする。
+ *
+ * - or() の構文記号: `,` `(` `)` `{` `}` `"` を除去
+ * - ilike のワイルドカード: `%` `_` をバックスラッシュでエスケープ
+ *
+ * @internal Exported for unit testing.
+ */
+export function sanitizeSearchTerm(term: string): string {
+  return term.replace(/[,(){}"]/g, '').replace(/[%_]/g, '\\$&')
+}
+
+/**
+ * 1検索語を action/feeling/themes 横断の or() clause 文字列に変換する。
+ * サニタイズ後に空になった場合は空文字を返す。
+ *
+ * 例: "記憶" → "scene->>action.ilike.%記憶%,feeling.ilike.%記憶%,themes.cs.{\"記憶\"}"
+ *
+ * @internal Exported for unit testing.
+ */
+export function buildSearchOrClause(term: string): string {
+  const safe = sanitizeSearchTerm(term)
+  if (!safe) return ''
+  // themes は string[] のため contains (cs) 構文を使い、配列値はダブルクォートで括る
+  return [
+    `scene->>action.ilike.%${safe}%`,
+    `feeling.ilike.%${safe}%`,
+    `themes.cs.{"${safe}"}`,
+  ].join(',')
+}
 
 // ──────────────────────────────────────────────
 // ファクトリ関数
@@ -58,6 +94,22 @@ export function createSupabaseMemoryStore(
       if (filter.status) query = query.eq('status', filter.status)
       if (filter.actionQuery) {
         query = query.filter('scene->>action', 'ilike', `%${filter.actionQuery}%`)
+      }
+      if (filter.searchQuery) {
+        const terms = filter.searchQuery.trim().split(/\s+/).filter(Boolean)
+        const mode = filter.searchMode ?? 'or'
+
+        if (mode === 'and') {
+          // AND: 全ての語が action / feeling / themes のいずれかに含まれる
+          for (const term of terms) {
+            const clause = buildSearchOrClause(term)
+            if (clause) query = query.or(clause)
+          }
+        } else {
+          // OR: いずれかの語が action / feeling / themes のいずれかに含まれる
+          const orParts = terms.map(buildSearchOrClause).filter(Boolean)
+          if (orParts.length > 0) query = query.or(orParts.join(','))
+        }
       }
 
       const orderBy = filter.orderBy ?? 'importance'
@@ -946,22 +998,45 @@ export function createSupabaseMemoryStore(
     async getPartnerTools(_partnerType: string): Promise<PartnerTool[]> {
       const { data, error } = await supabase
         .from('partner_tools')
-        .select('id, user_id, partner_type, title, description, created_at, updated_at')
+        .select('id, user_id, partner_type, title, description, is_encrypted, encrypted_description, created_at, updated_at')
         .eq('user_id', userId)
         .eq('partner_type', 'shared')
         .order('created_at', { ascending: true })
       if (error) throw new Error(`getPartnerTools failed: ${error.message}`)
-      return (data as PartnerTool[] | null) ?? []
+      const rows = (data ?? []) as (PartnerTool & { is_encrypted?: boolean; encrypted_description?: string })[]
+      return rows.map(row => {
+        let desc = row.description
+        if (row.is_encrypted && row.encrypted_description) {
+          try {
+            desc = decrypt(row.encrypted_description)
+          } catch (e) {
+            console.error(`Failed to decrypt partner_tool "${row.title}":`, e)
+            desc = '[復号失敗]'
+          }
+        }
+        // encrypted_description のみ除外。is_encrypted はフロント表示用に残す
+        // description は null の場合も '' にフォールバック
+        const { encrypted_description, ...clean } = row
+        return { ...clean, description: desc ?? '' } as PartnerTool
+      })
     },
 
-    async upsertPartnerTool(_partnerType: string, title: string, description: string): Promise<void> {
-      const { error } = await supabase.from('partner_tools').upsert({
+    async upsertPartnerTool(_partnerType: string, title: string, description: string, isEncrypted = false): Promise<void> {
+      const row: Record<string, unknown> = {
         user_id: userId,
         partner_type: 'shared',
         title,
-        description,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id,partner_type,title' })
+        is_encrypted: isEncrypted,
+      }
+      if (isEncrypted) {
+        row.encrypted_description = encrypt(description)
+        row.description = null
+      } else {
+        row.description = description
+        row.encrypted_description = null
+      }
+      const { error } = await supabase.from('partner_tools').upsert(row, { onConflict: 'user_id,partner_type,title' })
       if (error) throw new Error(`upsertPartnerTool failed: ${error.message}`)
     },
 
