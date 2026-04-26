@@ -134,6 +134,8 @@ export interface PartnerTool {
   partner_type: string
   title: string
   description: string
+  is_encrypted?: boolean
+  encrypted_description?: string | null
   created_at: string
   updated_at: string
 }
@@ -204,7 +206,9 @@ export interface NodeFilter {
   secondaryOrderBy?: 'importance' | 'last_activated' | 'created_at'
   secondaryOrderDirection?: 'asc' | 'desc'
   limit?: number
-  actionQuery?: string  // scene->>action に ilike
+  actionQuery?: string  // scene->>action に ilike（後方互換）
+  searchQuery?: string  // action / feeling / themes を横断検索
+  searchMode?: 'or' | 'and'  // デフォルト 'or'
 }
 
 // ──────────────────────────────────────────────
@@ -335,7 +339,7 @@ export interface MemoryStore {
 
   // --- partner_tools ---
   getPartnerTools(partnerType: string): Promise<PartnerTool[]>
-  upsertPartnerTool(partnerType: string, title: string, description: string): Promise<void>
+  upsertPartnerTool(partnerType: string, title: string, description: string, isEncrypted?: boolean): Promise<void>
   deletePartnerTool(partnerType: string, title: string): Promise<void>
 
   // --- partner_map ---
