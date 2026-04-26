@@ -204,7 +204,9 @@ export interface NodeFilter {
   secondaryOrderBy?: 'importance' | 'last_activated' | 'created_at'
   secondaryOrderDirection?: 'asc' | 'desc'
   limit?: number
-  actionQuery?: string  // scene->>action に ilike
+  actionQuery?: string  // scene->>action に ilike（後方互換）
+  searchQuery?: string  // action / feeling / themes を横断検索
+  searchMode?: 'or' | 'and'  // デフォルト 'or'
 }
 
 // ──────────────────────────────────────────────

@@ -59,6 +59,30 @@ export function createSupabaseMemoryStore(
       if (filter.actionQuery) {
         query = query.filter('scene->>action', 'ilike', `%${filter.actionQuery}%`)
       }
+      if (filter.searchQuery) {
+        const terms = filter.searchQuery.trim().split(/\s+/).filter(Boolean)
+        const mode = filter.searchMode ?? 'or'
+        if (mode === 'and') {
+          // AND: 全ての語が action / feeling / themes のいずれかに含まれる
+          for (const term of terms) {
+            const escaped = term.replace(/[%_]/g, '\\$&')
+            query = query.or(
+              `scene->>action.ilike.%${escaped}%,feeling.ilike.%${escaped}%,themes.cs.{${escaped}}`
+            )
+          }
+        } else {
+          // OR: いずれかの語が action / feeling / themes のいずれかに含まれる
+          const orParts = terms.flatMap((term) => {
+            const escaped = term.replace(/[%_]/g, '\\$&')
+            return [
+              `scene->>action.ilike.%${escaped}%`,
+              `feeling.ilike.%${escaped}%`,
+              `themes.cs.{${escaped}}`,
+            ]
+          })
+          query = query.or(orParts.join(','))
+        }
+      }
 
       const orderBy = filter.orderBy ?? 'importance'
       const orderDir = filter.orderDirection ?? 'desc'

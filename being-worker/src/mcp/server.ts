@@ -79,16 +79,18 @@ export async function createMcpServer(
   // ── search_memory ──────────────────────────────────────────────────────────
   server.tool(
     'search_memory',
-    '記憶ノード（memory_nodes）をキーワードで検索する。過去の体験・感情・出来事を思い出したい時に使う。recall_memoryと違いcluster_idは不要。',
+    '記憶ノード（memory_nodes）をキーワードで検索する。action / feeling / themes を横断検索。スペース区切りでOR検索（デフォルト）。mode="and" で全語AND検索。',
     {
-      query: z.string().describe('検索キーワード（部分一致）'),
+      query: z.string().describe('検索キーワード。スペース区切りで複数語指定可（デフォルトOR検索）'),
+      mode: z.enum(['or', 'and']).optional().describe('検索モード: "or"（デフォルト）または "and"'),
       limit: z.number().optional().describe('返す件数（デフォルト10、最大30）'),
     },
     async (args) => {
       try {
         const limit = Math.min(args.limit ?? 10, 30)
         const nodes = await store.getNodes({
-          actionQuery: args.query,
+          searchQuery: args.query,
+          searchMode: args.mode ?? 'or',
           limit,
           orderBy: 'importance',
           orderDirection: 'desc',
