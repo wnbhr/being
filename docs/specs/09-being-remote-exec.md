@@ -9,28 +9,10 @@ The feature is **opt-in for developer / hobbyist users** who want to operate the
 The design separates three concerns:
 
 - **Being side** — stores which host to send what to (`partner_tools.remote_hosts`) and exposes the `remote_exec` tool. Owns no tunnel or auth infrastructure.
-- **Receiver** — a generic HTTP daemon running on the user's host. It listens on loopback, executes whitelisted commands, and authenticates with bearer tokens. The reference implementation is `being-bridge-server` (Go), distributed by Being.
+- **Receiver** — a generic HTTP daemon running on the user's host. It listens on loopback, executes whitelisted commands, and authenticates with bearer tokens. The reference implementation is written in Go and distributed by Being (see issue #7 for naming and packaging).
 - **Tunnel layer** — user's choice (Cloudflare Tunnel, Tailscale Funnel, frp, self-hosted Caddy + Basic Auth, etc.). Being side does not dictate the tunnel shape; HTTPS reachability + bearer token is the only contract.
 
 This means a user can pick whatever tunnel fits their threat model, and Being only ever talks to a stable HTTPS endpoint.
-
----
-
-## Connection Diagram
-
-```
-┌──────────────────┐    ┌──────────────────┐    ┌──────────────────────┐    ┌──────────────────┐
-│   LLM Client     │    │   Being Worker   │    │   Tunnel Layer       │    │   User's Host    │
-│ (Claude.ai etc.) │ ── │  remote_exec     │ ── │  (Cloudflare Tunnel  │ ── │  Receiver        │
-│                  │    │  tool            │    │   / Tailscale / ...) │    │  (loopback)      │
-└──────────────────┘    └──────────────────┘    └──────────────────────┘    └──────────────────┘
-                              │                          HTTPS                       │
-                              │   POST /exec                                         │
-                              │   Authorization: Bearer <token>                      │
-                              ▼                                                      ▼
-                         partner_tools.remote_hosts                            allowlist
-                         (per-host config)                                     (default-deny)
-```
 
 ---
 
@@ -60,7 +42,7 @@ Content-Type: application/json
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `command` | `string` | yes | Full command string. Must be authorised by the receiver's allowlist. |
-| `timeout_ms` | `integer` | no | Per-call timeout in milliseconds. Receiver MAY enforce its own upper bound. |
+| `timeout_ms` | `integer` | no | Per-call timeout in milliseconds. If omitted, the Being-side tool handler uses `default_timeout_ms` from `partner_tools.remote_hosts`. If that is also absent, the receiver MUST apply its own default (implementation-defined, SHOULD be documented). The receiver MAY enforce an upper bound regardless of the requested value. |
 | `stdin` | `string` | no | Standard input piped to the command. Default empty. |
 
 **Response (200):**
@@ -81,7 +63,7 @@ Content-Type: application/json
 | `stdout` | `string` | UTF-8 stdout, possibly truncated by the receiver. |
 | `stderr` | `string` | UTF-8 stderr, same truncation rule. |
 | `duration_ms` | `integer` | Wall-clock duration in milliseconds. |
-| `truncated` | `boolean` | `true` if either stream was truncated. |
+| `truncated` | `boolean` | `true` if either stream was truncated. MVP returns a single boolean; future versions MAY report per-stream truncation. |
 
 **Error responses:**
 
@@ -116,6 +98,8 @@ Liveness probe. No authentication required.
 ```
 
 The receiver MAY include additional fields (uptime, etc.). Clients MUST tolerate unknown fields.
+
+> **Note:** When the receiver is exposed via a tunnel, `/health` is reachable without bearer authentication. The `version` field may reveal the receiver version to unauthenticated callers. Operators SHOULD consider restricting `/health` behind tunnel-level authentication (e.g. Cloudflare Access) or omitting `version` in production deployments.
 
 ---
 
@@ -240,7 +224,7 @@ The Being MCP Server exposes one tool, `remote_exec`, when the calling Being has
 | `host_id` | `string` | yes | Stable identifier referenced by `remote_exec.host`. Unique per Being. |
 | `label` | `string` | no | Human-readable name for UI. |
 | `endpoint` | `string` | yes | Base HTTPS URL of the receiver. `/exec` is appended by the tool handler. |
-| `token` | `string` | yes | Bearer token. Stored encrypted at rest using the same scheme as other secrets in `partner_tools` (see spec 02). |
+| `token` | `string` | yes | Bearer token. Stored encrypted at rest using `ENCRYPTION_KEY` (AES-256-GCM), the same scheme used for extension secrets (e.g. `bot_token` in the Telegram extension). Decrypted only inside the tool handler at call time. |
 | `default_timeout_ms` | `integer` | no | Used when the LLM omits `timeout_ms`. |
 | `notes` | `string` | no | Free-form text shown in Cove dashboard UI. |
 
@@ -259,7 +243,7 @@ Responsibility for each layer:
 |---------|-------|-------|
 | Choosing what commands are safe to run | **Receiver operator** (the user) | Allowlist authored by the operator. Default-deny. |
 | Authenticating callers | **Receiver** | Bearer tokens, constant-time compare, multiple tokens for rotation. |
-| Encrypting tokens at rest in Being | **Being API** | Per spec 02 — same scheme as other `partner_tools` secrets. Decrypted only inside the tool handler. |
+| Encrypting tokens at rest in Being | **Being API** | AES-256-GCM via `ENCRYPTION_KEY`, same scheme as extension secrets. Decrypted only inside the tool handler. |
 | Tunnel-level authentication and DDoS | **Tunnel layer** | E.g. Cloudflare Access policies, Tailscale ACLs. Not Being's concern. |
 | Process isolation on host | **OS** | Receiver SHOULD run as a dedicated unprivileged user. Sandboxing (namespaces, seccomp) is out of MVP scope. |
 | Audit log | **Receiver** | Every accepted request SHOULD be logged with timestamp, command, exit code, duration. Token value MUST NOT be logged. |
