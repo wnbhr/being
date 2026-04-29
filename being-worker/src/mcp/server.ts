@@ -21,6 +21,7 @@ import { getBridgesByUser, getBridgeById } from '../bridge/bridge-manager.js'
 import { haikuFrontRecall } from '../lib/chat/haiku-recall.js'
 import { sceneToText } from '../lib/chat/scene-utils.js'
 import { handleActTool } from '../lib/chat/act-tool.js'
+import { handleRemoteExec } from '../lib/chat/remote-exec.js'
 
 export interface McpServerOptions {
   llmApiKey?: string
@@ -428,6 +429,22 @@ export async function createMcpServer(
           }),
         }],
       }
+    }
+  )
+
+  // ── remote_exec ────────────────────────────────────────────────────────────
+  server.tool(
+    'remote_exec',
+    'リモートサーバーでコマンドを実行する。partner_tools.remote_hosts に登録されたホストに対して、許可リスト内のコマンドを送信する。',
+    {
+      host: z.string().describe('実行先のhost_id（partner_tools.remote_hostsに登録済みのもの）'),
+      command: z.string().describe('実行するコマンド（ホスト側の許可リストに含まれている必要がある）'),
+      timeout_ms: z.number().optional().describe('タイムアウト ms（省略時はホストのdefault_timeout_msを使用）'),
+      stdin: z.string().optional().describe('標準入力として渡す文字列（省略可）'),
+    },
+    async (args) => {
+      const result = await handleRemoteExec(store, args, fetch, userId)
+      return { content: [{ type: 'text' as const, text: JSON.stringify({ result }) }] }
     }
   )
 
