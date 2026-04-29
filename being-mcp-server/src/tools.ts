@@ -150,4 +150,46 @@ export const tools: ToolDef[] = [
     handler: async (args) =>
       client.request("POST", "/patrol/trigger", args, true),
   },
+
+  // ── remote_exec ─────────────────────────────────────────────
+  // #929 — spec 09 (wnbhr/being docs/specs/09-being-remote-exec.md)
+  //
+  // 露出方針: 常時露出。partner_tools.remote_hosts が未設定の Being では
+  // ハンドラがネットワーク呼び出し前に invalid_request を返す。
+  //
+  // 動的な per-Being 露出（remote_hosts が空のときはツール自体を隠す）が
+  // 必要になったら、Being Worker 側に既に GET /v1/beings/:id/remote-exec/has-hosts
+  // を生やしてある。MCP サーバー起動時にこれを叩いて、件数 0 のときは本ツールを
+  // tools 配列から外す形に切り替えればよい。
+  {
+    name: "remote_exec",
+    description:
+      "Execute a shell command on a user-owned remote host (VPS, NAS, home server) over HTTPS. " +
+      "Requires a `remote_hosts` entry in partner_tools that lists the host and an auth token. " +
+      "If no remote_hosts entry exists for the calling Being, this tool returns an invalid_request error — " +
+      "the user must configure partner_tools.remote_hosts first. " +
+      "The remote receiver enforces a default-deny allowlist; unauthorised commands return a forbidden error. " +
+      "Token values are never returned to the caller.",
+    inputSchema: {
+      host: z
+        .string()
+        .describe("host_id from the remote_hosts entry in partner_tools."),
+      command: z
+        .string()
+        .describe(
+          "Full command string. Must be authorised by the receiver's allowlist."
+        ),
+      timeout_ms: z
+        .number()
+        .optional()
+        .describe(
+          "Per-call timeout in milliseconds. Receivers may enforce their own upper bound."
+        ),
+      stdin: z
+        .string()
+        .optional()
+        .describe("Standard input piped to the command. Default empty."),
+    },
+    handler: async (args) => client.request("POST", "/remote-exec", args),
+  },
 ]

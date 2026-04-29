@@ -22,6 +22,7 @@ import { actQueueRoute } from './routes/act-queue.js'
 import { beingIdentityRoute } from './routes/being-identity.js'
 import { mcpRoute } from './routes/mcp.js'
 import { beingExtensionsRoute } from './routes/being-extensions.js'
+import { beingRemoteExecRoute } from './routes/being-remote-exec.js'
 import { beingToolLoopRoute } from './routes/being-tool-loop.js'
 import { telegramWebhookRoute } from './routes/telegram-webhook.js'
 import { oauthMetadataRoute } from './routes/oauth-metadata.js'
@@ -189,6 +190,7 @@ app.register(actQueueRoute)
 app.register(beingIdentityRoute)
 app.register(mcpRoute)
 app.register(beingExtensionsRoute)
+app.register(beingRemoteExecRoute)
 app.register(beingToolLoopRoute)
 app.register(telegramWebhookRoute)
 app.register(oauthMetadataRoute)
