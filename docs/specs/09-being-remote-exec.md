@@ -173,7 +173,7 @@ The Being MCP Server exposes one tool, `remote_exec`, when the calling Being has
 1. The tool handler looks up `host` in the calling Being's `partner_tools.remote_hosts`. Unknown `host_id` returns an error to the LLM without making a network call.
 2. The handler resolves the host's `endpoint` and `token`, then issues `POST <endpoint>/exec` with the user's `command`.
 3. The HTTP response is returned to the LLM verbatim as the tool result, augmented with the `host` field for traceability.
-4. Network errors (DNS failure, connection refused, TLS error) are surfaced as a tool error with a short reason string. Token values are never echoed.
+4. Network errors (DNS failure, connection refused, TLS error) are surfaced as a tool error with a short reason string. Token values are never included in error messages or tool results returned to the LLM. (The Worker reads tokens internally from `partner_tools` to authenticate against the receiver; this is expected.)
 
 **Result shape returned to the LLM (success):**
 
