@@ -28,8 +28,7 @@ export const capabilitiesRoute: FastifyPluginAsync = async (app) => {
   app.get<{ Params: { being_id: string } }>(
     '/v1/beings/:being_id/capabilities',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id } = request.params
 
       if (!await verifyOwnership(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -60,8 +59,7 @@ export const capabilitiesRoute: FastifyPluginAsync = async (app) => {
   }>(
     '/v1/beings/:being_id/capabilities/register',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id } = request.params
       const { bridge_id, bridge_name, capabilities } = request.body
 
@@ -78,8 +76,7 @@ export const capabilitiesRoute: FastifyPluginAsync = async (app) => {
   app.delete<{ Params: { being_id: string; id: string } }>(
     '/v1/beings/:being_id/capabilities/:id',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id, id } = request.params
 
       if (!await verifyOwnership(being_id, userId)) return reply.code(404).send({ error: 'Not found' })

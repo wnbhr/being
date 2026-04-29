@@ -10,7 +10,7 @@
  * POST    /v1/beings/:being_id/notes
  *
  * 認証: index.ts の onRequest フックで自動適用（Bearer BEING_API_TOKEN）
- * #546: (request as any).beingUserId でユーザー特定（DB認証後に注入）
+ * #546: request.beingUserId でユーザー特定（DB認証後に注入）
  *
  * #553
  */
@@ -38,8 +38,7 @@ export const beingSettingsRoute: FastifyPluginAsync = async (app) => {
   // ─── SOUL ─────────────────────────────────────────────────
 
   app.get<{ Params: { being_id: string } }>('/v1/beings/:being_id/soul', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id } = request.params
 
     if (!await verifyAndGetBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -50,8 +49,7 @@ export const beingSettingsRoute: FastifyPluginAsync = async (app) => {
   })
 
   app.put<{ Params: { being_id: string }; Body: Record<string, unknown> }>('/v1/beings/:being_id/soul', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id } = request.params
 
     if (!await verifyAndGetBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -68,8 +66,7 @@ export const beingSettingsRoute: FastifyPluginAsync = async (app) => {
   // ─── PREFERENCES ──────────────────────────────────────────
 
   app.get<{ Params: { being_id: string } }>('/v1/beings/:being_id/preferences', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id } = request.params
 
     if (!await verifyAndGetBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -80,8 +77,7 @@ export const beingSettingsRoute: FastifyPluginAsync = async (app) => {
   })
 
   app.put<{ Params: { being_id: string }; Body: Record<string, unknown> }>('/v1/beings/:being_id/preferences', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id } = request.params
 
     if (!await verifyAndGetBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -98,8 +94,7 @@ export const beingSettingsRoute: FastifyPluginAsync = async (app) => {
   // ─── RELATIONSHIPS ─────────────────────────────────────────
 
   app.get<{ Params: { being_id: string } }>('/v1/beings/:being_id/relationships', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id } = request.params
 
     if (!await verifyAndGetBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -110,8 +105,7 @@ export const beingSettingsRoute: FastifyPluginAsync = async (app) => {
   })
 
   app.put<{ Params: { being_id: string; id: string }; Body: Record<string, unknown> }>('/v1/beings/:being_id/relationships/:id', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id, id } = request.params
 
     if (!await verifyAndGetBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -130,8 +124,7 @@ export const beingSettingsRoute: FastifyPluginAsync = async (app) => {
   // ─── PARTNER RULES ────────────────────────────────────────
 
   app.get<{ Params: { being_id: string } }>('/v1/beings/:being_id/rules', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id } = request.params
 
     if (!await verifyAndGetBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -146,8 +139,7 @@ export const beingSettingsRoute: FastifyPluginAsync = async (app) => {
   })
 
   app.put<{ Params: { being_id: string }; Body: Record<string, unknown> }>('/v1/beings/:being_id/rules', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id } = request.params
 
     if (!await verifyAndGetBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -164,8 +156,7 @@ export const beingSettingsRoute: FastifyPluginAsync = async (app) => {
   // ─── NOTES ────────────────────────────────────────────────
 
   app.get<{ Params: { being_id: string } }>('/v1/beings/:being_id/notes', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id } = request.params
 
     if (!await verifyAndGetBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -179,8 +170,7 @@ export const beingSettingsRoute: FastifyPluginAsync = async (app) => {
   })
 
   app.post<{ Params: { being_id: string }; Body: { content: string } }>('/v1/beings/:being_id/notes', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id } = request.params
     const { content } = request.body
 

@@ -11,7 +11,7 @@
  * X-LLM-API-Key ヘッダーは任意。未設定時はDBからBYOKキーを取得し、なければLLM依存ステップをスキップ。
  *
  * 認証: index.ts の onRequest フックで自動適用（Bearer BEING_API_TOKEN）
- * #546: (request as any).beingUserId でユーザー特定
+ * #546: request.beingUserId でユーザー特定
  *
  * #557
  */
@@ -35,8 +35,7 @@ export const beingPatrolRoute: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const { being_id } = request.params
       const { messages, marker_id } = request.body
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
 
       // X-LLM-API-Key is optional (mechanical patrol steps run without it)
       const llmApiKey = (request.headers['x-llm-api-key'] as string | undefined) || undefined

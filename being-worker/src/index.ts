@@ -110,11 +110,11 @@ app.addHook('onRequest', async (request, reply) => {
 
       if (oauthToken && !oauthToken.revoked && new Date(oauthToken.expires_at) > new Date()) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(request as any).beingUserId = oauthToken.user_id
+        request.beingUserId = oauthToken.user_id
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(request as any).beingScope = oauthToken.scope
+        request.beingScope = oauthToken.scope
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(request as any).beingId = oauthToken.being_id
+        request.beingId = oauthToken.being_id
         return
       }
 
@@ -135,9 +135,9 @@ app.addHook('onRequest', async (request, reply) => {
 
     if (tokenRow && !tokenRow.revoked_at) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(request as any).beingUserId = tokenRow.user_id
+      request.beingUserId = tokenRow.user_id
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(request as any).beingScope = tokenRow.scope
+      request.beingScope = tokenRow.scope
 
       if (tokenRow.scope === 'read-only' && request.method !== 'GET') {
         return reply.code(403).send({ error: 'Read-only token cannot perform this action' })
@@ -155,9 +155,9 @@ app.addHook('onRequest', async (request, reply) => {
     // フォールバック: 環境変数 BEING_API_TOKEN（過渡期）
     if (config.beingApiToken && auth === `Bearer ${config.beingApiToken}`) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(request as any).beingUserId = config.beingApiUserId
+      request.beingUserId = config.beingApiUserId
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(request as any).beingScope = 'full'
+      request.beingScope = 'full'
       return
     }
 
