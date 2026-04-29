@@ -31,8 +31,7 @@ export const actQueueRoute: FastifyPluginAsync = async (app) => {
   }>(
     '/v1/beings/:being_id/act/pending',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id } = request.params
 
       if (!await verifyOwnership(being_id, userId)) {
@@ -62,8 +61,7 @@ export const actQueueRoute: FastifyPluginAsync = async (app) => {
   }>(
     '/v1/beings/:being_id/act/pending/approve',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id } = request.params
       const body = request.body as { action_id?: unknown }
 
@@ -100,8 +98,7 @@ export const actQueueRoute: FastifyPluginAsync = async (app) => {
   }>(
     '/v1/beings/:being_id/act/pending/reject',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id } = request.params
       const body = request.body as { action_id?: unknown }
 

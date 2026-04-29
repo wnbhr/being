@@ -108,8 +108,7 @@ export const beingToolLoopRoute: FastifyPluginAsync = async (app) => {
   }>(
     '/v1/beings/:being_id/tool-loop',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id } = request.params
       const { prompt, max_turns = 20, timeout_ms = 300_000 } = request.body
 

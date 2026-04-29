@@ -41,8 +41,7 @@ export const beingRemoteExecRoute: FastifyPluginAsync = async (app) => {
     Body: RemoteExecInput
   }>('/v1/beings/:being_id/remote-exec', async (request, reply) => {
     const { being_id } = request.params
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
 
     if (!(await verifyOwnership(being_id, userId)))
       return reply.code(404).send({ error: 'Not found' })
@@ -59,8 +58,7 @@ export const beingRemoteExecRoute: FastifyPluginAsync = async (app) => {
     '/v1/beings/:being_id/remote-exec/has-hosts',
     async (request, reply) => {
       const { being_id } = request.params
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
 
       if (!(await verifyOwnership(being_id, userId)))
         return reply.code(404).send({ error: 'Not found' })

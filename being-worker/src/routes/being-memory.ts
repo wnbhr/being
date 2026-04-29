@@ -10,7 +10,7 @@
  *
  * 既存ツールハンドラの薄いラッパー。LLMキー不要。
  * 認証: index.ts の onRequest フックで自動適用（Bearer BEING_API_TOKEN）
- * #546: (request as any).beingUserId でユーザー特定（DB認証後に注入）
+ * #546: request.beingUserId でユーザー特定（DB認証後に注入）
  *
  * #555
  */
@@ -56,8 +56,7 @@ export const beingMemoryRoute: FastifyPluginAsync = async (app) => {
     Body: { cluster_id: string; limit?: number; query?: string; no_nodes?: boolean }
   }>('/v1/beings/:being_id/memory/recall', async (request, reply) => {
     const { being_id } = request.params
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
 
     if (!await verifyOwnership(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
 
@@ -75,8 +74,7 @@ export const beingMemoryRoute: FastifyPluginAsync = async (app) => {
     Body: { node_ids: string; summary: string; feeling?: string }
   }>('/v1/beings/:being_id/memory/merge', async (request, reply) => {
     const { being_id } = request.params
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
 
     if (!await verifyOwnership(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
 
@@ -94,8 +92,7 @@ export const beingMemoryRoute: FastifyPluginAsync = async (app) => {
     Body: UpdateMemoryInput
   }>('/v1/beings/:being_id/memory/update', async (request, reply) => {
     const { being_id } = request.params
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
 
     if (!await verifyOwnership(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
 
@@ -111,8 +108,7 @@ export const beingMemoryRoute: FastifyPluginAsync = async (app) => {
     Body: UpdateNotesInput
   }>('/v1/beings/:being_id/memory/conclude', async (request, reply) => {
     const { being_id } = request.params
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
 
     if (!await verifyOwnership(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
 
@@ -134,8 +130,7 @@ export const beingMemoryRoute: FastifyPluginAsync = async (app) => {
     Body: SearchHistoryInput & { session_id?: string }
   }>('/v1/beings/:being_id/memory/search-history', async (request, reply) => {
     const { being_id } = request.params
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
 
     if (!await verifyOwnership(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
 
@@ -152,8 +147,7 @@ export const beingMemoryRoute: FastifyPluginAsync = async (app) => {
     Body: UpdateRelationInput
   }>('/v1/beings/:being_id/relationships/update', async (request, reply) => {
     const { being_id } = request.params
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
 
     if (!await verifyOwnership(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
 
@@ -168,8 +162,7 @@ export const beingMemoryRoute: FastifyPluginAsync = async (app) => {
     Body: { user_message: string }
   }>('/v1/beings/:being_id/memory/auto-recall', async (request, reply) => {
     const { being_id } = request.params
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
 
     const llmApiKey = request.headers['x-llm-api-key'] as string | undefined
     if (!llmApiKey) return reply.code(400).send({ error: 'X-LLM-API-Key header is required' })
