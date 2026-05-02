@@ -78,6 +78,28 @@ export const tools: ToolDef[] = [
     handler: async (args) => client.request("POST", "/memory/conclude", args),
   },
 
+  // ── search_memory ───────────────────────────────────────────
+  {
+    name: "search_memory",
+    description:
+      "Search memory nodes (memory_nodes) by keyword across action / feeling / themes / when fields. " +
+      "Space-separated terms are OR-searched by default. Use mode='and' to require all terms to match. " +
+      "The when field includes evolution history entries ({date, action}) written during consolidation.",
+    inputSchema: {
+      query: z.string().describe("Search keywords (space-separated for multi-term)"),
+      mode: z
+        .enum(["or", "and"])
+        .optional()
+        .describe("Search mode: 'or' (default) or 'and'"),
+      limit: z
+        .number()
+        .optional()
+        .describe("Max results (default 10, max 30)"),
+    },
+    handler: async (args) =>
+      client.request("POST", "/memory/search-nodes", args),
+  },
+
   // ── search_history ──────────────────────────────────────────
   {
     name: "search_history",
@@ -193,3 +215,4 @@ export const tools: ToolDef[] = [
     handler: async (args) => client.request("POST", "/remote-exec", args),
   },
 ]
+
