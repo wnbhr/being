@@ -48,10 +48,14 @@ export function sanitizeSearchTerm(term: string): string {
 }
 
 /**
- * 1検索語を action/feeling/themes 横断の or() clause 文字列に変換する。
+ * 1検索語を action/feeling/themes/when 横断の or() clause 文字列に変換する。
  * サニタイズ後に空になった場合は空文字を返す。
  *
- * 例: "記憶" → "scene->>action.ilike.%記憶%,feeling.ilike.%記憶%,themes.cs.{\"記憶\"}"
+ * 例: "記憶" → "scene->>action.ilike.%記憶%,feeling.ilike.%記憶%,themes.cs.{\"記憶\"},scene->>when.ilike.%記憶%"
+ *
+ * #942: scene->>when を追加。when は WhenItem[] として JSONB に格納されているが、
+ * PostgREST の ->> でテキスト展開すると配列全体が JSON 文字列として返るため、
+ * ilike で日付・変遷サマリーのキーワードが検索可能になる。
  *
  * @internal Exported for unit testing.
  */
@@ -59,10 +63,12 @@ export function buildSearchOrClause(term: string): string {
   const safe = sanitizeSearchTerm(term)
   if (!safe) return ''
   // themes は string[] のため contains (cs) 構文を使い、配列値はダブルクォートで括る
+  // when は WhenItem[] (JSON配列) — ->> でテキスト展開して ilike で検索
   return [
     `scene->>action.ilike.%${safe}%`,
     `feeling.ilike.%${safe}%`,
     `themes.cs.{"${safe}"}`,
+    `scene->>when.ilike.%${safe}%`,
   ].join(',')
 }
 
