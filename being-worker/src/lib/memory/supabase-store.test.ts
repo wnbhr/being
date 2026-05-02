@@ -52,10 +52,10 @@ describe('sanitizeSearchTerm', () => {
 })
 
 describe('buildSearchOrClause', () => {
-  it('普通の単語は3フィールド分の or 句を生成する', () => {
+  it('普通の単語は4フィールド分の or 句を生成する', () => {
     const result = buildSearchOrClause('記憶')
     expect(result).toBe(
-      'scene->>action.ilike.%記憶%,feeling.ilike.%記憶%,themes.cs.{"記憶"}'
+      'scene->>action.ilike.%記憶%,feeling.ilike.%記憶%,themes.cs.{"記憶"},scene->>when.ilike.%記憶%'
     )
   })
 
@@ -64,10 +64,11 @@ describe('buildSearchOrClause', () => {
     expect(result).toContain('themes.cs.{"感情"}')
   })
 
-  it('action / feeling は ilike 部分一致になる', () => {
+  it('action / feeling / when は ilike 部分一致になる', () => {
     const result = buildSearchOrClause('test')
     expect(result).toContain('scene->>action.ilike.%test%')
     expect(result).toContain('feeling.ilike.%test%')
+    expect(result).toContain('scene->>when.ilike.%test%')
   })
 
   it('サニタイズで空になる入力は空文字を返す', () => {
@@ -89,6 +90,6 @@ describe('buildSearchOrClause', () => {
     expect(result.includes(',(')).toBe(false)
     expect(result.includes(')')).toBe(false)
     // clause 内で意図的に使われる , とフィールド区切り記号は残る
-    expect(result.split(',').length).toBe(3) // 3フィールド分
+    expect(result.split(',').length).toBe(4) // 4フィールド分（#942: when追加）
   })
 })

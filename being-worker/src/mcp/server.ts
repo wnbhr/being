@@ -107,9 +107,12 @@ export async function createMcpServer(
           const action = (n.scene as { action?: string } | null)?.action?.toLowerCase() ?? ''
           const feeling = (n.feeling ?? '').toLowerCase()
           const themes = (n.themes as string[] | null) ?? []
+          // #942: when も検索対象に追加。WhenItem[] を JSON 文字列化して検索
+          const whenStr = JSON.stringify((n.scene as { when?: unknown } | null)?.when ?? '').toLowerCase()
           if (terms.some(t => action.includes(t))) fields.push('action')
           if (terms.some(t => feeling.includes(t))) fields.push('feeling')
           if (terms.some(t => themes.some(th => th.toLowerCase().includes(t)))) fields.push('themes')
+          if (terms.some(t => whenStr.includes(t))) fields.push('when')
           return fields
         }
 
