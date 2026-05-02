@@ -256,3 +256,18 @@ Every time `recall` is called (either via MCP or internally during chat):
 If no clusters match, the tool returns an empty result (no tag).
 
 When `recall_memory` is called explicitly with a `cluster_id`, nodes in the result have their `reactivation_count` incremented: dead nodes by +2 (aggressive revival signal), active nodes by +1. Similarly, `search_memory` increments active nodes by +1 and dead nodes by +2 for all matching results.
+
+### `search_memory` — keyword search fields
+
+`search_memory` performs keyword search across the following fields (OR logic per term by default):
+
+| Field | PostgREST expression | Notes |
+|---|---|---|
+| `scene.action` | `scene->>action ilike '%Q%'` | Primary clustering key |
+| `feeling` | `feeling ilike '%Q%'` | Top-level column |
+| `themes` | `themes @> '{"Q"}'` | Array contains |
+| `scene.when` | `scene->>when ilike '%Q%'` | Full JSON text match — covers both plain date strings and `{date, action}` object entries |
+
+The `scene->>when` expression returns the entire `when` array as a JSON string, so a query like `"Day7"` or `"Hashi"` will match an entry such as `{"date":"Day7","action":"Hashiに正式決定"}`.
+
+Use `mode: "and"` to require all terms to match (any field); default is `mode: "or"`.
