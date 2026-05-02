@@ -113,6 +113,13 @@ export async function createMcpServer(
           return fields
         }
 
+        // #938: search_memoryでヒットしたノードをreactivate（「思い出した」のにカウントされないのは不整合）
+        // dead: +2, active: +1（recall_memoryと同じ方針）
+        const deadIds = nodes.filter(n => n.status === 'dead').map(n => n.id)
+        const activeIds = nodes.filter(n => n.status === 'active').map(n => n.id)
+        if (deadIds.length > 0) store.incrementReactivationCountsBy(deadIds, 2).catch(() => {})
+        if (activeIds.length > 0) store.incrementReactivationCounts(activeIds).catch(() => {})
+
         const lines = nodes.map(n => {
           const matched = detectMatchedFields(n)
           const matchTag = matched.length > 0 ? ` [matched: ${matched.join(',')}]` : ''
@@ -518,3 +525,4 @@ export async function createMcpServer(
 
   return server
 }
+

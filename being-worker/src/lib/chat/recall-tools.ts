@@ -89,12 +89,18 @@ export async function handleRecallMemory(
     return `[クラスタ: ${cluster.name}]\n${digestLine}\n\nノード: （なし）`
   }
 
-  // ❺ dead復活: ヒットしたdeadノードの reactivation_count += 2
-  // 次回patrol時の reviveDeadNodes RPC で eff_imp > 0.05 になれば active に復帰する
+  // ❺ reactivation: 明示的に読まれたノードは減衰を緩和する
+  // dead: +2（次回patrol で reviveDeadNodes RPC が eff_imp > 0.05 なら active 復帰）
+  // active: +1（「思い出した」ことでカウント。記憶モデルの一貫性のため）
   const deadNodes = nodes.filter((n) => n.status === 'dead')
   if (deadNodes.length > 0) {
     const deadIds = deadNodes.map((n) => n.id)
     await store.incrementReactivationCountsBy(deadIds, 2).catch(() => {})
+  }
+  const activeNodes = nodes.filter((n) => n.status === 'active')
+  if (activeNodes.length > 0) {
+    const activeIds = activeNodes.map((n) => n.id)
+    await store.incrementReactivationCounts(activeIds).catch(() => {})
   }
 
   const nodeLines = nodes
@@ -186,3 +192,4 @@ export async function handleMergeNodes(
   const newId = newIds[0] ?? '(unknown)'
   return `${nodes.length}件のノードを統合しました。新ノードID: ${newId}`
 }
+
