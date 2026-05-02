@@ -80,7 +80,7 @@ export async function createMcpServer(
   // ── search_memory ──────────────────────────────────────────────────────────
   server.tool(
     'search_memory',
-    '記憶ノード（memory_nodes）をキーワードで検索する。action / feeling / themes を横断検索。スペース区切りでOR検索（デフォルト）。mode="and" で全語AND検索。',
+    '記憶ノード（memory_nodes）をキーワードで検索する。action / feeling / themes / when を横断検索。スペース区切りでOR検索（デフォルト）。mode="and" で全語AND検索。',
     {
       query: z.string().describe('検索キーワード。スペース区切りで複数語指定可（デフォルトOR検索）'),
       mode: z.enum(['or', 'and']).optional().describe('検索モード: "or"（デフォルト）または "and"'),
