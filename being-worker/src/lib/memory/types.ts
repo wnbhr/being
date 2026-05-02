@@ -65,6 +65,8 @@ export interface MemoryNodeUpdate {
   scene?: Scene
   /** 統合時にthemesを更新する（❹ consolidation用） */
   themes?: string[]
+  /** 統合時にfeelingを更新する（❹ consolidation用、#937） */
+  feeling?: string | null
 }
 
 export interface Cluster {
@@ -366,3 +368,4 @@ export interface MemoryStore {
   // --- profiles ---
   getProfile(): Promise<Profile | null>
 }
+
