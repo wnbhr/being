@@ -6,6 +6,7 @@
  * POST /v1/beings/:being_id/memory/update
  * POST /v1/beings/:being_id/memory/conclude
  * POST /v1/beings/:being_id/memory/search-history
+ * POST /v1/beings/:being_id/memory/search-nodes
  * POST /v1/beings/:being_id/relationships/update
  *
  * 既存ツールハンドラの薄いラッパー。LLMキー不要。
@@ -122,6 +123,39 @@ export const beingMemoryRoute: FastifyPluginAsync = async (app) => {
       partnerType,
     })
     return reply.send({ result })
+  })
+
+  // POST /memory/search-nodes (#942)
+  // being-mcp-server の search_memory ツール用エンドポイント。
+  // action / feeling / themes / when を横断キーワード検索する。
+  app.post<{
+    Params: { being_id: string }
+    Body: { query: string; mode?: 'or' | 'and'; limit?: number }
+  }>('/v1/beings/:being_id/memory/search-nodes', async (request, reply) => {
+    const { being_id } = request.params
+    const userId: string = request.beingUserId
+
+    if (!await verifyOwnership(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
+
+    const { query, mode, limit } = request.body
+    if (!query) return reply.code(400).send({ error: 'query is required' })
+
+    const store = createSupabaseMemoryStore(supabase, userId, undefined, being_id)
+    const nodes = await store.getNodes({
+      searchQuery: query,
+      searchMode: mode ?? 'or',
+      limit: Math.min(limit ?? 10, 30),
+      orderBy: 'importance',
+      orderDirection: 'desc',
+    })
+
+    // reactivation: ヒットしたノードを「思い出した」としてカウント
+    const deadIds = nodes.filter(n => n.status === 'dead').map(n => n.id)
+    const activeIds = nodes.filter(n => n.status === 'active').map(n => n.id)
+    if (deadIds.length > 0) store.incrementReactivationCountsBy(deadIds, 2).catch(() => {})
+    if (activeIds.length > 0) store.incrementReactivationCounts(activeIds).catch(() => {})
+
+    return reply.send({ nodes, count: nodes.length })
   })
 
   // POST /memory/search-history
