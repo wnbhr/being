@@ -4,6 +4,12 @@ This document describes how a Being stores, organises, and refreshes its long-te
 
 ---
 
+## Data Isolation
+
+All memory data — `memory_nodes`, `clusters`, `notes`, `diary`, `relationships`, `partner_rules`, `session_snapshot`, and `party_messages` — is scoped by `being_id`. Each Being's data is fully isolated from other Beings owned by the same user.
+
+---
+
 ## Memory Structure
 
 Memory is stored in two layers.
@@ -50,11 +56,23 @@ A scene is stored as a JSONB object. The canonical fields are:
 interface Scene {
   action: string      // What happened (required — primary clustering key)
   actors: string[]    // Who was involved (required)
-  when: string[]      // Dates as YYYY-MM-DD (required)
+  when: WhenItem[]    // Timeline entries (required). See WhenItem below.
   setting?: string    // Where / context
   dialogue?: string[] // Notable quotes
   sensory?: string[]  // Sensory details
 }
+
+/**
+ * WhenItem — timeline entry in a scene.
+ *
+ * Two forms are supported (backward-compatible):
+ *   - string: a plain date string "YYYY-MM-DD" (original format)
+ *   - object: { date: "YYYY-MM-DD", action: "summary of what happened that day" }
+ *
+ * The object form is written by the consolidation step (❹) so that the history
+ * of absorbed nodes is preserved rather than discarded.
+ */
+type WhenItem = string | { date: string; action: string }
 ```
 
 The `feeling` field is stored separately alongside the scene (a top-level column), not inside the JSONB object.
@@ -167,7 +185,15 @@ RPC `revive_dead_nodes` — checks all `dead` nodes. A node is revived to `activ
 ```
 eff_imp = importance × exp(−session_count / 30) > 0.05
 ```
-This condition can be satisfied after `recall` increments `reactivation_count` (by +1 via `recall` tool, or by +2 when browsing via `recall_memory`).
+This condition can be satisfied after `reactivation_count` is incremented by any of the following:
+
+| Tool | Nodes affected | Increment |
+|---|---|---|
+| `recall` | active nodes returned by vector search | +1 |
+| `recall_memory` | active nodes in the cluster | +1 |
+| `recall_memory` | dead nodes in the cluster | +2 (aggressive revival signal) |
+| `search_memory` | active nodes matching the query | +1 |
+| `search_memory` | dead nodes matching the query | +2 |
 
 #### ❻ Cluster splitting — LLM required (Sonnet)
 
@@ -228,4 +254,19 @@ If no nodes match, the tool returns an empty result (no tag).
 
 **Fragment mode (`toFragments`):** All matched nodes' `action` and `feeling` texts are extracted, shuffled randomly, and joined with ` / `. Node boundaries are intentionally blurred so the AI receives the memories as a diffuse impression rather than a structured list.
 
-When `recall_memory` is called explicitly with a `cluster_id`, dead nodes in the result have their `reactivation_count` incremented by 2 (more aggressive revival signal).
+When `recall_memory` is called explicitly with a `cluster_id`, nodes in the result have their `reactivation_count` incremented: dead nodes by +2 (aggressive revival signal), active nodes by +1. Similarly, `search_memory` increments active nodes by +1 and dead nodes by +2 for all matching results.
+
+### `search_memory` — keyword search fields
+
+`search_memory` performs keyword search across the following fields (OR logic per term by default):
+
+| Field | PostgREST expression | Notes |
+|---|---|---|
+| `scene.action` | `scene->>action ilike '%Q%'` | Primary clustering key |
+| `feeling` | `feeling ilike '%Q%'` | Top-level column |
+| `themes` | `themes @> '{"Q"}'` | Array contains |
+| `scene.when` | `scene->>when ilike '%Q%'` | Full JSON text match — covers both plain date strings and `{date, action}` object entries |
+
+The `scene->>when` expression returns the entire `when` array as a JSON string, so a query like `"Day7"` or `"Hashi"` will match an entry such as `{"date":"Day7","action":"Hashiに正式決定"}`.
+
+Use `mode: "and"` to require all terms to match (any field); default is `mode: "or"`.

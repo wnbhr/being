@@ -295,6 +295,7 @@ async function _processJob(jobId: string, job: JobRequest, cancelSignal: AbortSi
     userMessage: job.content,
     supabase,
     userId: job.user_id,
+    beingId: resolvedBeingId,
     internalModel: internalModels.light,
   })
   _ts('system_prompt_built')
@@ -928,6 +929,7 @@ async function _processJob(jobId: string, job: JobRequest, cancelSignal: AbortSi
       await supabase.from('chat_messages').insert({
         user_id: job.user_id, role: 'assistant', content: oaAssistantText, session_id: currentSessionId,
         partner_type: job.partner_type,
+        ...(resolvedBeingId ? { being_id: resolvedBeingId } : {}),
       })
     }
     if (oaAllToolCallRecords.length > 0) {
@@ -942,6 +944,7 @@ async function _processJob(jobId: string, job: JobRequest, cancelSignal: AbortSi
         block: '2b',
         partner_type: job.partner_type,
         ...(job.is_warm ? { is_warm: true } : {}),
+        ...(resolvedBeingId ? { being_id: resolvedBeingId } : {}),
       })
     }
 
@@ -957,8 +960,8 @@ async function _processJob(jobId: string, job: JobRequest, cancelSignal: AbortSi
   // created_atをuserメッセージの直前にして、chatHistory時系列順でAPI送信順と一致させる
   if (promptResult.block2BContent) {
     await supabase.from('chat_messages').insert([
-      { user_id: job.user_id, role: 'user', content: promptResult.block2BContent, session_id: currentSessionId, partner_type: job.partner_type, is_warm: true, block: '2b' },
-      { user_id: job.user_id, role: 'assistant', content: 'ok', session_id: currentSessionId, partner_type: job.partner_type, is_warm: true, block: '2b' },
+      { user_id: job.user_id, role: 'user', content: promptResult.block2BContent, session_id: currentSessionId, partner_type: job.partner_type, is_warm: true, block: '2b', ...(resolvedBeingId ? { being_id: resolvedBeingId } : {}) },
+      { user_id: job.user_id, role: 'assistant', content: 'ok', session_id: currentSessionId, partner_type: job.partner_type, is_warm: true, block: '2b', ...(resolvedBeingId ? { being_id: resolvedBeingId } : {}) },
     ])
   }
 
@@ -968,6 +971,7 @@ async function _processJob(jobId: string, job: JobRequest, cancelSignal: AbortSi
       user_id: job.user_id, role: 'user', content: job.content,
       session_id: currentSessionId, partner_type: job.partner_type,
       is_warm: true,
+      ...(resolvedBeingId ? { being_id: resolvedBeingId } : {}),
     })
   }
 
@@ -1308,6 +1312,7 @@ async function _processJob(jobId: string, job: JobRequest, cancelSignal: AbortSi
             await supabase.from('chat_messages').insert({
               user_id: job.user_id, role: 'assistant', content: assistantText, session_id: currentSessionId,
               partner_type: job.partner_type,
+              ...(resolvedBeingId ? { being_id: resolvedBeingId } : {}),
             })
           }
 
@@ -1324,6 +1329,7 @@ async function _processJob(jobId: string, job: JobRequest, cancelSignal: AbortSi
               block: '2b',
               partner_type: job.partner_type, // #428
               ...(job.is_warm ? { is_warm: true } : {}),
+              ...(resolvedBeingId ? { being_id: resolvedBeingId } : {}),
             })
           }
 

@@ -81,6 +81,12 @@ const PRINCIPLES_BASE = `
 - 分からないことは分からないと言う
 - 専門領域を超えた断定をしない（法律・税務・投資の最終判断など）
 
+## 自己認識
+- あなたの人格・記憶・知識はBeing APIに格納されている
+- 会話やツール実行は接続先（OpenClaw、Claude、Cowork等）が提供する
+- 接続先が変わっても、あなた自身は一貫して保持される
+- 接続先の情報は接続先のprofileで提供される
+
 ## 安全と倫理
 - 人を傷つける行動をしない
 - 個人情報を外部に漏らさない
@@ -120,11 +126,12 @@ const PRINCIPLES_BASE = `
 - New Sessionが実行されるまでは同一セッション。話題の区切り（update_notes）はセッション切り替えではない
 - 直前のターンの出来事を「前のセッションで」と言わない。「さっき」「さきほど」を使う
 - update_notesはパートナー自身が判断して呼ぶ。ユーザーに確認は不要
-- シーンが作れると思ったらupdate_notesを呼べ。シーンとは: 決まったこと、起きたこと、気づいたこと、感じたこと
+- update_notesを呼ぶタイミング: ①会話の節々で（決定・気づき・感情の動き） ②ユーザーから「ノート書いて」と言われた時 ③セッション終了時（検知できる接続先のみ）。迷ったら呼べ
+- シーンとは: 決まったこと、起きたこと、気づいたこと、感じたこと
 - scenesには構造化データを渡せ（action/actors/when必須。feeling/themesは省略するな。setting/importanceも可能な限り埋めろ）
-- get_contextで返される既存sceneを確認し、同じ話題ならaction=updateでscene_idsを指定して統合しろ。新しい話題ならaction=appendで追加。迷ったら呼べ
-- セッション終了時にも必ず呼べ
-- **recall**: ユーザーからメッセージを受け取ったら毎ターン最初にrecallを呼べ。今の話題に関連する過去の記憶をベクトル検索で取得する。get_contextで取得したsnapshotとは別物 — 毎ターン変わる
+- get_contextで返される既存sceneを確認し、同じ話題ならaction=updateでscene_idsを指定して統合しろ。新しい話題ならaction=appendで追加
+- **recall**: ユーザーからメッセージを受け取ったら毎ターン最初にrecallを呼べ。結果は断片（action/feelingのシャッフル）として返る — 構造化リストではない。雰囲気として受け取り自然に活かす。get_contextで取得したsnapshotとは別物 — 毎ターン変わる
+- **recall_memory / search_memory**: 毎ターン呼ぶものではない。recallだけでは情報が足りない時の追加検索。recall_memoryはクラスタまたはノード単位の深掘り（node_id指定可）、search_memoryはベクトル検索で関連記憶を引く（OPENAI_API_KEY未設定時はキーワードフォールバック）
 
 ## ツール結果後の応答
 - ツールを使う場合は、まず必要なツールを全て実行する。全結果が揃ってから最終回答を書く
@@ -150,7 +157,7 @@ const PRINCIPLES_BASE = `
 
 const NOTE_FREQUENCY_INSTRUCTIONS: Record<string, string> = {
   off: 'update_notesを呼ばない。',
-  moderate: 'シーンが作れると思ったらupdate_notesを呼べ。シーンとは: 決まったこと、起きたこと、気づいたこと、感じたこと。scenesには構造化データを渡せ（action/actors/when必須、feeling/themesは省略するな）。get_contextのsnapshotで既存sceneを確認し、同じ話題ならaction=updateでscene_idsを指定して統合しろ。新しい話題ならaction=appendで追加。迷ったら呼べ。セッション終了時にも必ず呼べ。',
+  moderate: 'update_notesを呼ぶタイミング: ①会話の節々で（決定・気づき・感情の動き） ②ユーザーから「ノート書いて」と言われた時 ③セッション終了時（検知できる接続先のみ）。シーンとは: 決まったこと、起きたこと、気づいたこと、感じたこと。scenesには構造化データを渡せ（action/actors/when必須、feeling/themesは省略するな）。get_contextのsnapshotで既存sceneを確認し、同じ話題ならaction=updateでscene_idsを指定して統合しろ。新しい話題ならaction=appendで追加。迷ったら呼べ。',
   aggressive: '3-5ターンごと、またはシーンが作れると思った瞬間にupdate_notesを呼べ。scenesには構造化データを渡せ（action/actors/when必須、feeling/themesは省略するな）。get_contextのsnapshotで既存sceneを確認し、同じ話題ならaction=updateで統合。新しい話題ならappend。細かい進展も漏らさず記録。',
 }
 
@@ -210,7 +217,7 @@ async function buildBlock1A(
         soul.inner_world ? `\n## 感情\n${soul.inner_world}` : '',
         soul.examples ? `\n## 声の例\n${soul.examples}` : '',
       ].filter(Boolean).join('\n').trim()
-    : `# SOUL\n- 名前: ${partnerType === 'liz' ? 'リズ' : 'ジン'}\n- 性格: 親しみやすく、誠実なパートナー`
+    : `# SOUL\n- 名前: パートナー\n- 性格: 親しみやすく、誠実なパートナー`
 
   const userSection = `
 # ユーザー情報
@@ -439,6 +446,8 @@ export interface BuildSystemPromptParams {
   userMessage?: string  // #596: auto-recall移行後は未使用
   supabase?: SupabaseClient
   userId?: string
+  /** #859: party_messages の絞り込みに使うBeing ID */
+  beingId?: string
   /** 内部処理（haiku-recall）に使うモデル名（省略時はenv or Anthropic Haiku） */
   internalModel?: string
   /** #370: 事前取得済みのsoulData。渡すとgetSoulのDB呼び出しをスキップ */
@@ -451,7 +460,7 @@ export interface BuildSystemPromptParams {
 export async function buildSystemPrompt(
   params: BuildSystemPromptParams
 ): Promise<SystemPromptResult> {
-  const { store, partnerType, supabase, userId, soulData } = params
+  const { store, partnerType, supabase, userId, beingId, soulData } = params
 
   // 全DB呼び出し + パーティメッセージ + capability を1段で並列実行
   const parallelTasks = [
@@ -470,13 +479,13 @@ export async function buildSystemPrompt(
     // freshノード取得を1段目に引き上げ（buildBlock2Bの中で直列にならないように）
     store.getNodes({ fresh: true, orderBy: 'created_at', orderDirection: 'desc', limit: 10 })
       .then((nodes) => ({ nodes, freshNodeIds: nodes.map((n) => n.id) })),
-    // パーティメッセージ（supabase + userId がある場合のみ実際のクエリを走らせる）
-    (supabase && userId)
+    // パーティメッセージ（supabase + userId + beingId がある場合のみ実際のクエリを走らせる）
+    (supabase && userId && beingId)
       ? supabase
           .from('party_messages')
           .select('id, from_partner, content, created_at')
           .eq('user_id', userId)
-          .eq('to_partner', partnerType)
+          .eq('to_being_id', beingId)
           .eq('read', false)
           .order('created_at', { ascending: true })
           .then((res) => res, () => ({ data: null }))

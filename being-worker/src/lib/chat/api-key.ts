@@ -92,7 +92,6 @@ export async function getApiKeyFromTable(
     .select('api_key_encrypted')
     .eq('user_id', userId)
     .eq('provider', provider)
-    .eq('is_valid', true)
     .maybeSingle() as { data: { api_key_encrypted: string } | null }
 
   if (data?.api_key_encrypted) {

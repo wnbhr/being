@@ -1,0 +1,55 @@
+{
+  "name": "@ruddia/being-mcp-server",
+  "version": "1.0.0",
+  "mcpName": "com.ruddia/being-mcp-server",
+  "description": "MCP server for Being — a Personality Runtime that gives AI agents persistent memory, personality, and relationships",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "being-mcp-server": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wnbhr/being.git",
+    "directory": "being-mcp-server"
+  },
+  "homepage": "https://github.com/wnbhr/being/tree/main/being-mcp-server",
+  "bugs": {
+    "url": "https://github.com/wnbhr/being/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-personality",
+    "ai-memory",
+    "being",
+    "ruddia",
+    "ai-agent",
+    "personality-runtime"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "express": "^4.21.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}

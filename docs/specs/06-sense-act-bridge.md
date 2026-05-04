@@ -183,7 +183,38 @@ Content-Type: application/json
 
 ## Sense Input via REST
 
-Besides the WebSocket `sense` message, external systems can push sense events via REST:
+### POST `/v1/beings/:being_id/sense`
+
+Push sense data from external clients (game engines, HTTP-only devices, etc.) without a WebSocket connection.
+
+```
+POST /v1/beings/:being_id/sense
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "capability_id": "cap-camera-001",
+  "data": {
+    "image_url": "https://...",
+    "timestamp": "2026-04-17T12:00:00Z"
+  }
+}
+```
+
+- `capability_id` must exist in the `capabilities` table with `type='sense'` and belong to the authenticated user. Invalid IDs return `400`.
+- `data` is stored as-is in `sense_log`. Any JSON object is accepted.
+- The `processed` flag is initially `false`; it is flipped to `true` when `get_context` fetches the row.
+
+**Response (201):**
+```json
+{
+  "sense_id": "<uuid>",
+  "capability_id": "cap-camera-001",
+  "processed": false
+}
+```
+
+### GET `/v1/beings/:being_id/sense/history`
 
 ```
 GET /v1/beings/:being_id/sense/history
@@ -234,6 +265,69 @@ Returns only capabilities from **currently connected** (online) Bridges:
   ]
 }
 ```
+
+---
+
+## Act Queue — Pending / Approve / Reject
+
+When the MCP client calls an `act_*` tool but the Bridge is **not connected**, the action is queued in `act_queue` with `status='pending'` instead of being sent immediately.
+
+External clients can inspect and resolve queued actions via REST:
+
+### GET `/v1/beings/:being_id/act/pending`
+
+```
+GET /v1/beings/:being_id/act/pending
+Authorization: Bearer <token>
+```
+
+Returns all actions waiting for Bridge execution:
+
+```json
+{
+  "actions": [
+    {
+      "id": "<uuid>",
+      "capability_id": "cap-speaker-001",
+      "bridge_id": "my-phone-bridge",
+      "action_type": "play",
+      "action_payload": { "url": "https://..." },
+      "status": "pending",
+      "created_at": "2026-04-17T12:00:00Z"
+    }
+  ]
+}
+```
+
+### POST `/v1/beings/:being_id/act/pending/approve`
+
+Mark a queued action as approved (user or Bridge confirms execution):
+
+```
+POST /v1/beings/:being_id/act/pending/approve
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "action_id": "<uuid>" }
+```
+
+Updates `act_queue.status` to `'approved'` and sets `resolved_at`. Returns `{ ok: true, action: { ... } }`.
+
+### POST `/v1/beings/:being_id/act/pending/reject`
+
+Reject a queued action:
+
+```
+POST /v1/beings/:being_id/act/pending/reject
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "action_id": "<uuid>" }
+```
+
+Updates `act_queue.status` to `'rejected'` and sets `resolved_at`. Returns `{ ok: true, action: { ... } }`.
+
+> **Note:** Automatic execution of approved actions when the Bridge reconnects is out of scope for this release and will be addressed in a follow-up issue.
 
 ---
 
