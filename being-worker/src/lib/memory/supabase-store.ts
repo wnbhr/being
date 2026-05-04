@@ -48,14 +48,10 @@ export function sanitizeSearchTerm(term: string): string {
 }
 
 /**
- * 1検索語を action/feeling/themes/when 横断の or() clause 文字列に変換する。
+ * 1検索語を action/feeling/themes 横断の or() clause 文字列に変換する。
  * サニタイズ後に空になった場合は空文字を返す。
  *
- * 例: "記憶" → "scene->>action.ilike.%記憶%,feeling.ilike.%記憶%,themes.cs.{\"記憶\"},scene->>when.ilike.%記憶%"
- *
- * #942: scene->>when を追加。when は WhenItem[] として JSONB に格納されているが、
- * PostgREST の ->> でテキスト展開すると配列全体が JSON 文字列として返るため、
- * ilike で日付・変遷サマリーのキーワードが検索可能になる。
+ * 例: "記憶" → "scene->>action.ilike.%記憶%,feeling.ilike.%記憶%,themes.cs.{\"記憶\"}"
  *
  * @internal Exported for unit testing.
  */
@@ -63,12 +59,10 @@ export function buildSearchOrClause(term: string): string {
   const safe = sanitizeSearchTerm(term)
   if (!safe) return ''
   // themes は string[] のため contains (cs) 構文を使い、配列値はダブルクォートで括る
-  // when は WhenItem[] (JSON配列) — ->> でテキスト展開して ilike で検索
   return [
     `scene->>action.ilike.%${safe}%`,
     `feeling.ilike.%${safe}%`,
     `themes.cs.{"${safe}"}`,
-    `scene->>when.ilike.%${safe}%`,
   ].join(',')
 }
 
@@ -289,6 +283,53 @@ export function createSupabaseMemoryStore(
       })
       if (error) throw new Error(`findSimilarClusters failed: ${error.message}`)
       return (data as Array<{ id: string; name: string; similarity: number }> | null) ?? []
+    },
+
+    async findSimilarNodes(
+      queryVector: number[],
+      topK = 5,
+      threshold = 0.35
+    ): Promise<Array<{ id: string; cluster_id: string | null; similarity: number }>> {
+      const { data, error } = await supabase.rpc('match_nodes', {
+        p_user_id: userId,
+        query_embedding: queryVector,
+        match_threshold: threshold,
+        match_count: topK,
+        ...(beingId ? { p_being_id: beingId } : {}),
+      })
+      if (error) throw new Error(`findSimilarNodes failed: ${error.message}`)
+      return (data as Array<{ id: string; cluster_id: string | null; similarity: number }> | null) ?? []
+    },
+
+    async updateNodeVector(nodeId: string, vector: number[]): Promise<void> {
+      let query = supabase
+        .from('memory_nodes')
+        .update({ vector })
+        .eq('id', nodeId)
+        .eq('user_id', userId)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
+      if (error) throw new Error(`updateNodeVector failed: ${error.message}`)
+    },
+
+    async updateNodeVectors(updates: Array<{ id: string; vector: number[] }>): Promise<void> {
+      if (updates.length === 0) return
+      // 同時接続数を抑えるため、0並列で処理（Supabase接続港びつき防止）
+      const BATCH_SIZE = 10
+      for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+        const batch = updates.slice(i, i + BATCH_SIZE)
+        await Promise.all(batch.map((u) => {
+          let query = supabase
+            .from('memory_nodes')
+            .update({ vector: u.vector })
+            .eq('id', u.id)
+            .eq('user_id', userId)
+          if (beingId) query = query.eq('being_id', beingId)
+          return query.then(({ error }) => {
+            if (error) throw new Error(`updateNodeVectors failed for ${u.id}: ${error.message}`)
+          })
+        }))
+      }
     },
 
     async updateCluster(clusterId: string, updates: Partial<Pick<Cluster, 'name' | 'digest' | 'parent_id' | 'vector' | 'is_parent'>>): Promise<void> {
@@ -946,37 +987,31 @@ export function createSupabaseMemoryStore(
 
     // ── souls ──
 
-    // #854: being_id 優先（beingId がある場合は being_id でフィルタ、ない場合は partner_type）
     async getSoul(partnerType: string): Promise<Soul | null> {
-      let query = supabase
+      const { data } = await supabase
         .from('souls')
         .select('name, personality, voice, values, backstory, inner_world, examples, think_md, model, preference, user_call_name')
         .eq('user_id', userId)
-      if (beingId) query = query.eq('being_id', beingId)
-      else query = query.eq('partner_type', partnerType)
-      const { data } = await query.single()
+        .eq('partner_type', partnerType)
+        .single()
       return data as Soul | null
     },
 
     async updateSoulThinkMd(partnerType: string, thinkMd: string): Promise<void> {
-      let query = supabase
+      const { error } = await supabase
         .from('souls')
         .update({ think_md: thinkMd })
         .eq('user_id', userId)
-      if (beingId) query = query.eq('being_id', beingId)
-      else query = query.eq('partner_type', partnerType)
-      const { error } = await query
+        .eq('partner_type', partnerType)
       if (error) throw new Error(`updateSoulThinkMd failed: ${error.message}`)
     },
 
     async updateSoulModel(partnerType: string, model: string | null): Promise<void> {
-      let query = supabase
+      const { error } = await supabase
         .from('souls')
         .update({ model })
         .eq('user_id', userId)
-      if (beingId) query = query.eq('being_id', beingId)
-      else query = query.eq('partner_type', partnerType)
-      const { error } = await query
+        .eq('partner_type', partnerType)
       if (error) throw new Error(`updateSoulModel failed: ${error.message}`)
     },
 
@@ -986,13 +1021,11 @@ export function createSupabaseMemoryStore(
       patch: Partial<Pick<Soul, 'personality' | 'voice' | 'values' | 'backstory' | 'inner_world' | 'examples'>>
     ): Promise<void> {
       if (Object.keys(patch).length === 0) return
-      let query = supabase
+      const { error } = await supabase
         .from('souls')
         .update({ ...patch, updated_at: new Date().toISOString() })
         .eq('user_id', userId)
-      if (beingId) query = query.eq('being_id', beingId)
-      else query = query.eq('partner_type', partnerType)
-      const { error } = await query
+        .eq('partner_type', partnerType)
       if (error) throw new Error(`updateSoulFields failed: ${error.message}`)
     },
 

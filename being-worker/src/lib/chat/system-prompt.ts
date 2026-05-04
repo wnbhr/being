@@ -131,7 +131,7 @@ const PRINCIPLES_BASE = `
 - scenesには構造化データを渡せ（action/actors/when必須。feeling/themesは省略するな。setting/importanceも可能な限り埋めろ）
 - get_contextで返される既存sceneを確認し、同じ話題ならaction=updateでscene_idsを指定して統合しろ。新しい話題ならaction=appendで追加
 - **recall**: ユーザーからメッセージを受け取ったら毎ターン最初にrecallを呼べ。結果は断片（action/feelingのシャッフル）として返る — 構造化リストではない。雰囲気として受け取り自然に活かす。get_contextで取得したsnapshotとは別物 — 毎ターン変わる
-- **recall_memory / search_memory**: 毎ターン呼ぶものではない。recallだけでは情報が足りない時の追加検索。recall_memoryはクラスタ単位の深掘り、search_memoryはキーワードでのピンポイント検索
+- **recall_memory / search_memory**: 毎ターン呼ぶものではない。recallだけでは情報が足りない時の追加検索。recall_memoryはクラスタまたはノード単位の深掘り（node_id指定可）、search_memoryはベクトル検索で関連記憶を引く（OPENAI_API_KEY未設定時はキーワードフォールバック）
 
 ## ツール結果後の応答
 - ツールを使う場合は、まず必要なツールを全て実行する。全結果が揃ってから最終回答を書く
