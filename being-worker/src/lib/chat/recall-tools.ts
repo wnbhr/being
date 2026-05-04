@@ -21,16 +21,17 @@ import { recomputeClusterVector } from '../memory/embedding.js'
 export const RECALL_MEMORY_TOOL = {
   name: 'recall_memory',
   description:
-    '指定したクラスタまたはノードの記憶を取得する。cluster_id指定: クラスタ内ノード一覧。node_id指定: 特定ノードの詳細。recallツールが返したcluster_id/node_idを使って深掘りするユースケース。',
+    '指定したクラスタの記憶ダイジェストとノードを取得する。通常の会話ではHaikuフロントで自動注入されるが、特定のクラスタまたはノードを深掘りしたい時に使う。',
   input_schema: {
     type: 'object',
     properties: {
       cluster_id: { type: 'string', description: 'クラスタID（UUID）' },
-      node_id: { type: 'string', description: 'ノードID（UUID）— 指定時はそのノードの詳細を返す' },
+      node_id: { type: 'string', description: 'ノードID（UUID）。指定するとそのノードの詳細を返す（cluster_id不要）' },
       limit: { type: 'number', description: '返すノード数（デフォルト5）' },
       query: { type: 'string', description: 'ノード絞り込み用キーワード（action/dialogueにilike検索、省略可）' },
       no_nodes: { type: 'boolean', description: 'trueでdigestのみ返す' },
     },
+    required: [],
   },
 } as const
 
@@ -58,23 +59,28 @@ export async function handleRecallMemory(
   store: MemoryStore,
   input: { cluster_id?: string; node_id?: string; limit?: number; query?: string; no_nodes?: boolean }
 ): Promise<string> {
-  // node_id 指定: 特定ノードの詳細を返す（spec-946）
-  if (input.node_id && !input.cluster_id) {
+  // node_id 指定時: そのノードの詳細を返す
+  if (input.node_id) {
     const nodes = await store.getNodesByIds([input.node_id])
-    const node = nodes[0]
-    if (!node) return `ノード ${input.node_id} は見つかりませんでした`
+    if (nodes.length === 0) return `ノード ${input.node_id} は見つかりませんでした`
+    const n = nodes[0]
     const lines = [
-      `[ノード: ${node.id}]`,
-      `action: ${node.scene?.action ?? '（なし）'}`,
-      `feeling: ${node.feeling ?? '（なし）'}`,
-      `themes: ${node.themes?.join(', ') ?? '（なし）'}`,
-      `importance: ${node.importance ?? '—'}`,
-      `cluster_id: ${node.cluster_id ?? '（なし）'}`,
+      `ID: ${n.id}`,
+      `クラスタID: ${n.cluster_id ?? '（なし）'}`,
+      `action: ${n.scene?.action ?? '（なし）'}`,
+      `feeling: ${n.feeling ?? '（なし）'}`,
+      `themes: ${n.themes?.join(', ') ?? '（なし）'}`,
+      `importance: ${n.importance ?? '（なし）'}`,
+      `status: ${n.status ?? '（なし）'}`,
+      `reactivation_count: ${n.reactivation_count ?? 0}`,
     ]
+    await store.incrementReactivationCounts([n.id]).catch(() => {})
     return lines.join('\n')
   }
 
-  if (!input.cluster_id) return 'cluster_id または node_id を指定してください'
+  if (!input.cluster_id) {
+    return 'クラスタIDまたはノードIDを指定してください。'
+  }
 
   // 1. クラスタを取得
   const cluster = await store.getCluster(input.cluster_id)
@@ -107,12 +113,18 @@ export async function handleRecallMemory(
     return `[クラスタ: ${cluster.name}]\n${digestLine}\n\nノード: （なし）`
   }
 
-  // ❺ dead復活: ヒットしたdeadノードの reactivation_count += 2
-  // 次回patrol時の reviveDeadNodes RPC で eff_imp > 0.05 になれば active に復帰する
+  // ❺ reactivation: 明示的に読まれたノードは減衰を緩和する
+  // dead: +2（次回patrol で reviveDeadNodes RPC が eff_imp > 0.05 なら active 復帰）
+  // active: +1（「思い出した」ことでカウント。記憶モデルの一貫性のため）
   const deadNodes = nodes.filter((n) => n.status === 'dead')
   if (deadNodes.length > 0) {
     const deadIds = deadNodes.map((n) => n.id)
     await store.incrementReactivationCountsBy(deadIds, 2).catch(() => {})
+  }
+  const activeNodes = nodes.filter((n) => n.status === 'active')
+  if (activeNodes.length > 0) {
+    const activeIds = activeNodes.map((n) => n.id)
+    await store.incrementReactivationCounts(activeIds).catch(() => {})
   }
 
   const nodeLines = nodes

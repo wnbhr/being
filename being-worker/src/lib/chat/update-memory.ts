@@ -121,7 +121,7 @@ export async function handleUpdateMemory(
   partnerType?: string
 ): Promise<UpdateMemoryResult> {
   const { target, action, content = '', key, location } = input
-  const pType = partnerType ?? 'liz'
+  const pType = partnerType ?? 'default'
 
   try {
     switch (target) {

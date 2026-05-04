@@ -1,11 +1,12 @@
 /**
- * haiku-recall.ts — #32 Haikuフロント連想パイプライン
+ * haiku-recall.ts — #32 Haikuフロント連想パイプライン（断片モード）
  *
  * spec-31 (#598): Haikuキーワードマッチ → cosine類似度ベクトル検索に置き換え。
  * 1. ユーザーメッセージを OpenAI text-embedding-3-small でembedding
  * 2. findSimilarClusters() で類似クラスタを取得
  * 3. ヒットクラスタのノードを取得し reactivation_count をインクリメント
- * 4. <memory-recall> タグで返す（常駐ノードはget_context snapshotに移動）
+ * 4. 断片モード: action/feeling をシャッフルして混ぜた <memory-recall> タグで返す
+ *    ノード境界をぼかすことで、人間の記憶想起に近い「ごちゃごちゃ」した形式にする
  *
  * #62: MemoryStore interface 経由に移行
  */
@@ -13,7 +14,7 @@
 import type { MemoryStore } from '../memory/types.js'
 import type { LLMProvider } from '../llm/types.js'
 import { embedText } from '../memory/embedding.js'
-import { sceneToText } from './scene-utils.js'
+import type { Scene } from './scene-utils.js'
 
 // ──────────────────────────────────────────────
 // 型定義
@@ -25,6 +26,36 @@ export interface HaikuRecallResult {
 }
 
 // ──────────────────────────────────────────────
+// 断片シャッフル
+// ──────────────────────────────────────────────
+
+/**
+ * 複数ノードの action / feeling をばらして混ぜ、
+ * ノード境界を消した断片テキストを返す。
+ * 人間の記憶想起に近い「ごちゃごちゃ」した形式。
+ *
+ * @internal Exported for unit testing.
+ */
+export function toFragments(nodes: Array<{ scene: Scene | null; feeling?: string | null }>): string {
+  const pieces: string[] = []
+
+  for (const n of nodes) {
+    if (n.scene?.action) pieces.push(n.scene.action)
+    if (n.feeling) pieces.push(n.feeling)
+  }
+
+  if (pieces.length === 0) return ''
+
+  // Fisher-Yates シャッフル
+  for (let i = pieces.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[pieces[i], pieces[j]] = [pieces[j], pieces[i]]
+  }
+
+  return pieces.join(' / ')
+}
+
+// ──────────────────────────────────────────────
 // ベクトル検索によるrecall
 // ──────────────────────────────────────────────
 
@@ -32,12 +63,12 @@ async function runVectorRecall(store: MemoryStore, userMessage: string): Promise
   // 1. ユーザーメッセージを embed
   const queryVector = await embedText(userMessage)
 
-  // 2. 類似ノードを直接検索（spec-946: クラスタレベル → ノードレベル）
-  const nodeMatches = await store.findSimilarNodes(queryVector, 3, 0.35)
-  if (nodeMatches.length === 0) return ''
+  // 2. issue-946: findSimilarNodes でノードを直接取得（top-3）
+  const matches = await store.findSimilarNodes(queryVector, 3)
+  if (matches.length === 0) return ''
 
-  // 3. ヒットノードを取得し、reactivation_count をインクリメント
-  const nodeIds = nodeMatches.map((m) => m.id)
+  // 3. ノードの実データを取得し、reactivation_count をインクリメント
+  const nodeIds = matches.map((m) => m.id)
   const nodes = await store.getNodesByIds(nodeIds)
 
   if (nodes.length > 0) {
@@ -46,16 +77,10 @@ async function runVectorRecall(store: MemoryStore, userMessage: string): Promise
     })
   }
 
-  const parts: string[] = []
-  for (const match of nodeMatches) {
-    const node = nodes.find((n) => n.id === match.id)
-    if (!node) continue
-    const line = sceneToText(node.scene, node.feeling)
-    // node_id / cluster_id を深掘り用に含める
-    parts.push(`- ${line} [node_id: ${node.id}${node.cluster_id ? `, cluster_id: ${node.cluster_id}` : ''}]`)
-  }
+  if (nodes.length === 0) return ''
 
-  return parts.join('\n')
+  // 4. 断片モード: 全ノードの action/feeling をシャッフルして混ぜる
+  return toFragments(nodes)
 }
 
 // ──────────────────────────────────────────────

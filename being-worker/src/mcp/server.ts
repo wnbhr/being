@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod'
+import crypto from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { createSupabaseMemoryStore } from '../lib/memory/supabase-store.js'
@@ -16,20 +17,23 @@ import { handleSearchHistory } from '../lib/chat/search-history.js'
 import { handleUpdateRelation, type UpdateRelationInput } from '../lib/chat/update-relation.js'
 import { runPatrolWithMessages } from '../worker/patrol.js'
 import { buildSystemPrompt, buildBlock1B, type SystemBlock } from '../lib/chat/system-prompt.js'
-import { getBridgesByUser } from '../bridge/bridge-manager.js'
+import { getBridgesByUser, getBridgeById } from '../bridge/bridge-manager.js'
 import { haikuFrontRecall } from '../lib/chat/haiku-recall.js'
 import { sceneToText } from '../lib/chat/scene-utils.js'
+import { embedText } from '../lib/memory/embedding.js'
+import { handleActTool } from '../lib/chat/act-tool.js'
+import { handleRemoteExec } from '../lib/chat/remote-exec.js'
 
 export interface McpServerOptions {
   llmApiKey?: string
 }
 
-export function createMcpServer(
+export async function createMcpServer(
   userId: string,
   beingId: string,
   supabase: SupabaseClient,
   options: McpServerOptions = {}
-): McpServer {
+): Promise<McpServer> {
   // #786: beingId を渡して notes/memory_nodes/clusters の書き込み時に being_id を付与
   const store = createSupabaseMemoryStore(supabase, userId, undefined, beingId)
   const server = new McpServer({ name: 'being', version: '1.0.0' })
@@ -77,47 +81,88 @@ export function createMcpServer(
   // ── search_memory ──────────────────────────────────────────────────────────
   server.tool(
     'search_memory',
-    '記憶ノード（memory_nodes）をベクトル検索する。過去の体験・感情・出来事を思い出したい時に使う。recall_memoryと違いcluster_idは不要。OPENAI_API_KEY未設定時はキーワード検索にフォールバック。',
+    '記憶ノード（memory_nodes）をキーワードで検索する。action / feeling / themes / when を横断検索。スペース区切りでOR検索（デフォルト）。mode="and" で全語AND検索。',
     {
-      query: z.string().describe('検索クエリ（ベクトル検索またはキーワード部分一致）'),
+      query: z.string().describe('検索キーワード。スペース区切りで複数語指定可（デフォルトOR検索）'),
+      mode: z.enum(['or', 'and']).optional().describe('検索モード: "or"（デフォルト）または "and"'),
       limit: z.number().optional().describe('返す件数（デフォルト10、最大30）'),
     },
     async (args) => {
       try {
         const limit = Math.min(args.limit ?? 10, 30)
+        let nodes: Awaited<ReturnType<typeof store.getNodes>>
 
-        // ベクトル検索（OPENAI_API_KEY必須）— spec-946
+        // ベクトル検索（OPENAI_API_KEY がある場合）、なければキーワードフォールバック
+        let useVector = false
         if (process.env.OPENAI_API_KEY) {
-          const { embedText } = await import('../lib/memory/embedding.js')
-          const queryVector = await embedText(args.query)
-          const nodeMatches = await store.findSimilarNodes(queryVector, limit, 0.35)
-          if (nodeMatches.length > 0) {
-            const nodeIds = nodeMatches.map((m) => m.id)
-            const nodes = await store.getNodesByIds(nodeIds)
-            const lines = nodeMatches.map((m) => {
-              const node = nodes.find((n) => n.id === m.id)
-              if (!node) return null
-              return `- [node_id: ${node.id}${node.cluster_id ? `, cluster_id: ${node.cluster_id}` : ''}] ${sceneToText(node.scene as import('../lib/chat/scene-utils.js').Scene | null, node.feeling)}${node.themes ? ` (themes: ${(node.themes as string[]).join(', ')})` : ''}`
-            }).filter(Boolean)
-            return { content: [{ type: 'text' as const, text: `記憶 ${lines.length}件（ベクトル検索）:\n${lines.join('\n')}` }] }
+          try {
+            const queryVector = await embedText(args.query)
+            const matches = await store.findSimilarNodes(queryVector, limit)
+            if (matches.length > 0) {
+              const nodeIds = matches.map(m => m.id)
+              nodes = await store.getNodesByIds(nodeIds)
+              useVector = true
+            } else {
+              nodes = []
+            }
+          } catch (vectorErr) {
+            console.warn('[search_memory] vector search failed, falling back to keyword:', vectorErr)
+            // フォールバック: キーワード検索
+            nodes = await store.getNodes({
+              searchQuery: args.query,
+              searchMode: args.mode ?? 'or',
+              limit,
+              orderBy: 'importance',
+              orderDirection: 'desc',
+            })
           }
-          return { content: [{ type: 'text' as const, text: `「${args.query}」に関する記憶は見つかりませんでした。` }] }
+        } else {
+          // キーワード検索（フォールバック）
+          nodes = await store.getNodes({
+            searchQuery: args.query,
+            searchMode: args.mode ?? 'or',
+            limit,
+            orderBy: 'importance',
+            orderDirection: 'desc',
+          })
         }
 
-        // フォールバック: ilike検索（OPENAI_API_KEY未設定時）
-        const nodes = await store.getNodes({
-          actionQuery: args.query,
-          limit,
-          orderBy: 'importance',
-          orderDirection: 'desc',
-        })
         if (nodes.length === 0) {
           return { content: [{ type: 'text' as const, text: `「${args.query}」に関する記憶は見つかりませんでした。` }] }
         }
-        const lines = nodes.map(n =>
-          `- [${n.id}] ${sceneToText(n.scene as import('../lib/chat/scene-utils.js').Scene | null, n.feeling)}${n.themes ? ` (themes: ${(n.themes as string[]).join(', ')})` : ''}`
-        )
-        return { content: [{ type: 'text' as const, text: `記憶 ${nodes.length}件（キーワード検索）:\n${lines.join('\n')}` }] }
+
+        // どのフィールドにヒットしたかを判定するヘルパー（キーワード検索時のみ表示）
+        const terms = args.query.trim().split(/\s+/).filter(Boolean).map(t => t.toLowerCase())
+        const detectMatchedFields = (n: typeof nodes[number]): string[] => {
+          const fields: string[] = []
+          const action = (n.scene as { action?: string } | null)?.action?.toLowerCase() ?? ''
+          const feeling = (n.feeling ?? '').toLowerCase()
+          const themes = (n.themes as string[] | null) ?? []
+          // #942: when も検索対象に追加。WhenItem[] を JSON 文字列化して検索
+          const whenStr = JSON.stringify((n.scene as { when?: unknown } | null)?.when ?? '').toLowerCase()
+          if (terms.some(t => action.includes(t))) fields.push('action')
+          if (terms.some(t => feeling.includes(t))) fields.push('feeling')
+          if (terms.some(t => themes.some(th => th.toLowerCase().includes(t)))) fields.push('themes')
+          if (terms.some(t => whenStr.includes(t))) fields.push('when')
+          return fields
+        }
+
+        // #938: search_memoryでヒットしたノードをreactivate（「思い出した」のにカウントされないのは不整合）
+        // dead: +2, active: +1（recall_memoryと同じ方針）
+        const deadIds = nodes.filter(n => n.status === 'dead').map(n => n.id)
+        const activeIds = nodes.filter(n => n.status === 'active').map(n => n.id)
+        if (deadIds.length > 0) store.incrementReactivationCountsBy(deadIds, 2).catch(() => {})
+        if (activeIds.length > 0) store.incrementReactivationCounts(activeIds).catch(() => {})
+
+        const lines = nodes.map(n => {
+          const matchTag = useVector ? '' : (() => {
+            const matched = detectMatchedFields(n)
+            return matched.length > 0 ? ` [matched: ${matched.join(',')}]` : ''
+          })()
+          return `- [${n.id}]${matchTag} ${sceneToText(n.scene as import('../lib/chat/scene-utils.js').Scene | null, n.feeling)}${n.themes ? ` (themes: ${(n.themes as string[]).join(', ')})` : ''}`
+        })
+        const searchMethod = useVector ? 'ベクトル検索' : 'キーワード検索'
+        return { content: [{ type: 'text' as const, text: `記憶 ${nodes.length}件 (${searchMethod}):\n${lines.join('\n')}` }] }
       } catch (err) {
         return { content: [{ type: 'text' as const, text: `error: ${String(err)}` }], isError: true }
       }
@@ -308,7 +353,8 @@ export function createMcpServer(
         if (!recallResult.content) {
           return { content: [{ type: 'text' as const, text: '関連する記憶はありませんでした。' }] }
         }
-        return { content: [{ type: 'text' as const, text: recallResult.content }] }
+        const reminder = '\n\n[REMINDER] 次のターンでもrecall()を呼んでください。会話の中で気づき・転換・方針決定・感情の動きがあればupdate_notes()で記録してください。'
+        return { content: [{ type: 'text' as const, text: recallResult.content + reminder }] }
       } catch (err) {
         console.warn('[recall] haikuFrontRecall failed:', err)
         return { content: [{ type: 'text' as const, text: '記憶の検索に失敗しました（会話は続行してください）' }] }
@@ -337,6 +383,7 @@ export function createMcpServer(
             partnerType,
             supabase,
             userId,
+            beingId,
           })
           return {
             systemPrompt: result.system.map((b: SystemBlock) => b.text).join('\n\n'),
@@ -383,6 +430,28 @@ export function createMcpServer(
         }
       }
 
+      // pending_senses: sense_log の未処理分を注入し、processed=true に更新 (#886-③)
+      let pendingSenses: unknown[] = []
+      try {
+        const { data: senseRows } = await supabase
+          .from('sense_log')
+          .select('id, capability_id, bridge_id, data, created_at')
+          .eq('user_id', userId)
+          .eq('processed', false)
+          .order('created_at', { ascending: true })
+          .limit(50)
+        if (senseRows && senseRows.length > 0) {
+          pendingSenses = senseRows
+          // fire-and-forget で processed=true に更新
+          void supabase
+            .from('sense_log')
+            .update({ processed: true })
+            .in('id', senseRows.map((r: { id: string }) => r.id))
+        }
+      } catch (err) {
+        console.warn('[get_context] pending_senses fetch failed:', err)
+      }
+
       return {
         content: [{
           type: 'text' as const,
@@ -400,11 +469,97 @@ export function createMcpServer(
             },
             capability_tools: capabilityTools,
             recent_nodes: recentNodesText || undefined,
+            pending_senses: pendingSenses.length > 0 ? pendingSenses : undefined,
           }),
         }],
       }
     }
   )
 
+  // ── remote_exec ────────────────────────────────────────────────────────────
+  server.tool(
+    'remote_exec',
+    'リモートサーバーでコマンドを実行する。partner_tools.remote_hosts に登録されたホストに対して、許可リスト内のコマンドを送信する。',
+    {
+      host: z.string().describe('実行先のhost_id（partner_tools.remote_hostsに登録済みのもの）'),
+      command: z.string().describe('実行するコマンド（ホスト側の許可リストに含まれている必要がある）'),
+      timeout_ms: z.number().optional().describe('タイムアウト ms（省略時はホストのdefault_timeout_msを使用）'),
+      stdin: z.string().optional().describe('標準入力として渡す文字列（省略可）'),
+    },
+    async (args) => {
+      const result = await handleRemoteExec(store, args, fetch, userId)
+      return { content: [{ type: 'text' as const, text: JSON.stringify({ result }) }] }
+    }
+  )
+
+  // ── act_* dynamic tools — MCPクライアントがcapabilityを呼ぶ (#886-①) ────────
+  // 接続中Bridgeのact capabilityに対してツールを動的登録する。
+  // 呼ばれたらhandleActToolに繋ぐ。Bridge不在の場合はact_queueにpending記録。
+  const connectedBridgesForTools = getBridgesByUser(userId)
+  if (connectedBridgesForTools.length > 0) {
+    const bridgeIds = connectedBridgesForTools.map((b) => b.bridgeId)
+    const { data: actCaps } = await supabase
+      .from('capabilities')
+      .select('id, bridge_id, name, description, config')
+      .eq('user_id', userId)
+      .eq('type', 'act')
+      .in('bridge_id', bridgeIds)
+    for (const cap of actCaps ?? []) {
+      const toolName = `act_${(cap.name as string).toLowerCase().replace(/[^a-z0-9]/g, '_')}`
+      const actions = (cap.config as Record<string, unknown>)?.actions as string[] | undefined
+      server.tool(
+        toolName,
+        cap.description ?? `${cap.name} を実行する`,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {
+          action: z.string().describe(
+            actions ? `実行するアクション。選択肢: ${actions.join(', ')}` : '実行するアクション'
+          ),
+          parameters: z.record(z.string(), z.unknown()).optional().describe('アクションパラメータ（任意）'),
+          timeout_ms: z.number().optional().describe('タイムアウト ms（デフォルト 5000）'),
+        },
+        async (args) => {
+          // Bridge接続確認: 不在ならact_queueにpendingで記録
+          const bridge = getBridgeById(cap.bridge_id as string)
+          if (!bridge) {
+            // act_queueにpending登録
+            const queueId = crypto.randomUUID()
+            await supabase.from('act_queue').insert({
+              id: queueId,
+              being_id: beingId,
+              user_id: userId,
+              capability_id: cap.id,
+              bridge_id: cap.bridge_id,
+              action_type: args.action,
+              action_payload: args.parameters ?? {},
+              status: 'pending',
+            })
+            return {
+              content: [{
+                type: 'text' as const,
+                text: JSON.stringify({
+                  queue_id: queueId,
+                  status: 'pending',
+                  message: 'Bridge is not connected. Action queued for later execution.',
+                }),
+              }],
+            }
+          }
+
+          // Bridge接続中 → handleActToolに委譲
+          const result = await handleActTool(supabase, userId, {
+            capability_id: cap.id as string,
+            bridge_id: cap.bridge_id as string,
+            action: args.action,
+            parameters: args.parameters ?? {},
+            timeout_ms: args.timeout_ms,
+          })
+          return { content: [{ type: 'text' as const, text: result }] }
+        }
+      )
+    }
+  }
+
   return server
 }
+

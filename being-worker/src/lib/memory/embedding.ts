@@ -16,7 +16,7 @@ const EXPECTED_DIM = 1536
 // ──────────────────────────────────────────────
 
 /**
- * テキスト1件を256次元ベクトルにembedする。
+ * テキスト1件を1536次元ベクトルにembedする。
  */
 export async function embedText(text: string): Promise<number[]> {
   const apiKey = process.env.OPENAI_API_KEY
@@ -29,7 +29,6 @@ export async function embedText(text: string): Promise<number[]> {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({ model: EMBEDDING_MODEL, input: text }),
-    // dimensions パラメータ削除: 1536 はモデルデフォルト
   })
 
   if (!response.ok) {
@@ -67,7 +66,6 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({ model: EMBEDDING_MODEL, input: texts }),
-    // dimensions パラメータ削除: 1536 はモデルデフォルト
   })
 
   if (!response.ok) {
@@ -110,21 +108,26 @@ export function averageVectors(vectors: number[][]): number[] {
 import type { MemoryStore } from './types.js'
 import type { Scene } from '../chat/scene-utils.js'
 
+// ──────────────────────────────────────────────
+// embed対象テキスト生成ヘルパー
+// ──────────────────────────────────────────────
+
 /**
- * ノードのwhen + action + feelingを結合してembedテキストを生成する。
- * spec-946: embed対象をactionのみ→ when+action+feelingに拡張
+ * ノードの scene + feeling を結合してembedするテキストを生成する。
+ * when + action + feeling を結合（issue-946）。
  */
 export function nodeToEmbedText(scene: Scene, feeling: string | null): string {
-  const when = scene.when?.length ? `[${scene.when.join(', ')}] ` : ''
+  const when = scene.when?.length
+    ? `[${scene.when.join(', ')}] `
+    : ''
   const action = scene.action || ''
   const feel = feeling ? ` / ${feeling}` : ''
   return `${when}${action}${feel}`
 }
 
 /**
- * クラスタ内全activeノードをembedし、平均ベクトルでクラスタを更新する。
+ * クラスタ内全activeノードのaction textをembedし、平均ベクトルでクラスタを更新する。
  * OPENAI_API_KEY がない、またはノードが0件の場合はスキップ（warningのみ）。
- * spec-946: embed対象を action のみ → nodeToEmbedText(when+action+feeling) に変更
  */
 export async function recomputeClusterVector(
   store: MemoryStore,
@@ -136,13 +139,13 @@ export async function recomputeClusterVector(
   }
 
   const nodes = await store.getNodes({ clusterId, status: 'active' })
-  const texts = nodes
-    .filter((n) => n.scene?.action && n.scene.action.trim().length > 0)
-    .map((n) => nodeToEmbedText(n.scene as Scene, n.feeling))
+  const embedTextsArr = nodes
+    .filter((n) => n.scene?.action?.trim())
+    .map((n) => nodeToEmbedText(n.scene!, n.feeling ?? null))
 
-  if (texts.length === 0) return
+  if (embedTextsArr.length === 0) return
 
-  const vectors = await embedTexts(texts)
+  const vectors = await embedTexts(embedTextsArr)
   const avg = averageVectors(vectors)
   await store.updateClusterVector(clusterId, avg)
 }

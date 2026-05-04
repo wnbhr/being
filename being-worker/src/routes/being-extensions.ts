@@ -52,8 +52,7 @@ export const beingExtensionsRoute: FastifyPluginAsync = async (app) => {
   app.get<{ Params: { being_id: string } }>(
     '/v1/beings/:being_id/extensions',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id } = request.params
 
       if (!await verifyBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -72,8 +71,7 @@ export const beingExtensionsRoute: FastifyPluginAsync = async (app) => {
   app.post<{ Params: { being_id: string; slug: string } }>(
     '/v1/beings/:being_id/extensions/:slug/install',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id, slug } = request.params
 
       if (!await verifyBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -128,8 +126,7 @@ export const beingExtensionsRoute: FastifyPluginAsync = async (app) => {
   app.delete<{ Params: { being_id: string; slug: string } }>(
     '/v1/beings/:being_id/extensions/:slug/uninstall',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id, slug } = request.params
 
       if (!await verifyBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -152,8 +149,7 @@ export const beingExtensionsRoute: FastifyPluginAsync = async (app) => {
   app.put<{ Params: { being_id: string; slug: string } }>(
     '/v1/beings/:being_id/extensions/:slug/toggle',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id, slug } = request.params
 
       if (!await verifyBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })
@@ -190,8 +186,7 @@ export const beingExtensionsRoute: FastifyPluginAsync = async (app) => {
   }>(
     '/v1/beings/:being_id/extensions/:slug/config',
     async (request, reply) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
       const { being_id, slug } = request.params
 
       if (!await verifyBeing(being_id, userId)) return reply.code(404).send({ error: 'Not found' })

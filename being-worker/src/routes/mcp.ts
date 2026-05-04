@@ -149,7 +149,7 @@ export const mcpRoute: FastifyPluginAsync = async (app) => {
     const llmApiKey = request.headers['x-llm-api-key'] as string | undefined
 
     // MCP サーバー + トランスポートをリクエストごとに生成（stateless）
-    const mcpServer = createMcpServer(auth.userId, beingId, supabase, { llmApiKey })
+    const mcpServer = await createMcpServer(auth.userId, beingId, supabase, { llmApiKey })
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
     await mcpServer.connect(transport)
 

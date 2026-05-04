@@ -12,6 +12,7 @@
 
 import type { FastifyPluginAsync } from 'fastify'
 import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto'
 import { config } from '../config.js'
 
 const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey)
@@ -49,12 +50,12 @@ export const oauthDcrRoute: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ error: 'invalid_client_metadata', error_description: 'redirect_uris is required' })
     }
 
-    // token_endpoint_auth_method must be "none" (public clients only)
-    if (token_endpoint_auth_method !== 'none') {
-      return reply.code(400).send({ error: 'invalid_client_metadata', error_description: 'token_endpoint_auth_method must be "none"' })
+    // token_endpoint_auth_method must be "none" or "client_secret_basic"
+    if (token_endpoint_auth_method !== 'none' && token_endpoint_auth_method !== 'client_secret_basic') {
+      return reply.code(400).send({ error: 'invalid_client_metadata', error_description: 'token_endpoint_auth_method must be "none" or "client_secret_basic"' })
     }
 
-    // grant_types must include "authorization_code"
+    // grant_types must include "authorization_code" ("refresh_token" is also allowed)
     if (!grant_types.includes('authorization_code')) {
       return reply.code(400).send({ error: 'invalid_client_metadata', error_description: 'grant_types must include "authorization_code"' })
     }
@@ -72,6 +73,14 @@ export const oauthDcrRoute: FastifyPluginAsync = async (app) => {
     const clientId = `cid_${crypto.randomUUID()}`
     const now = Math.floor(Date.now() / 1000)
 
+    // Generate client_secret for confidential clients
+    let clientSecretPlain: string | undefined
+    let clientSecretHash: string | undefined
+    if (token_endpoint_auth_method === 'client_secret_basic') {
+      clientSecretPlain = 'csc_' + crypto.randomBytes(32).toString('base64url')
+      clientSecretHash = crypto.createHash('sha256').update(clientSecretPlain).digest('hex')
+    }
+
     const { error } = await supabase.from('oauth_clients').insert({
       client_id: clientId,
       client_name,
@@ -79,12 +88,14 @@ export const oauthDcrRoute: FastifyPluginAsync = async (app) => {
       grant_types,
       token_endpoint_auth_method,
       scope,
+      ...(clientSecretHash ? { client_secret: clientSecretHash } : {}),
     })
 
     if (error) return reply.code(500).send({ error: 'server_error', error_description: error.message })
 
     return reply.code(201).send({
       client_id: clientId,
+      ...(clientSecretPlain ? { client_secret: clientSecretPlain } : {}),
       client_name,
       redirect_uris,
       grant_types,

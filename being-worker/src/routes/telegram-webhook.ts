@@ -273,7 +273,7 @@ export const telegramWebhookRoute: FastifyPluginAsync = async (app) => {
               .limit(50)
 
             if (msgs && msgs.length > 0) {
-              const store = createSupabaseMemoryStore(supabase, being.owner_id, soul?.partner_type)
+              const store = createSupabaseMemoryStore(supabase, being.owner_id, soul?.partner_type, being_id)
               await handleUpdateNotes(store, { summary: '会話の区切り（/new）' }, {
                 llmApiKey,
                 userId: being.owner_id,
@@ -307,7 +307,7 @@ export const telegramWebhookRoute: FastifyPluginAsync = async (app) => {
               .eq('being_id', being_id)
               .maybeSingle()
 
-            const store = createSupabaseMemoryStore(supabase, being.owner_id, soul?.partner_type)
+            const store = createSupabaseMemoryStore(supabase, being.owner_id, soul?.partner_type, being_id)
             await handleUpdateNotes(store, { summary: '会話の整理（/compact）' }, {
               llmApiKey,
               userId: being.owner_id,
@@ -383,12 +383,13 @@ export const telegramWebhookRoute: FastifyPluginAsync = async (app) => {
       const partnerType = soul?.partner_type ?? 'default'
 
       // コンテキスト構築
-      const store = createSupabaseMemoryStore(supabase, being.owner_id, partnerType)
+      const store = createSupabaseMemoryStore(supabase, being.owner_id, partnerType, being_id)
       const promptResult = await buildSystemPrompt({
         store,
         partnerType,
         supabase,
         userId: being.owner_id,
+        beingId: being_id,
       })
       const systemPrompt = promptResult.system
         .map((b: { text: string }) => b.text)

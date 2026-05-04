@@ -14,7 +14,7 @@
  * #596: haiku-recall は /memory/auto-recall エンドポイントに移行。
  *
  * 認証: index.ts の onRequest フックで自動適用（Bearer BEING_API_TOKEN）
- * #546: (request as any).beingUserId でユーザー特定
+ * #546: request.beingUserId でユーザー特定
  *
  * #556
  */
@@ -51,8 +51,7 @@ export const beingContextRoute: FastifyPluginAsync = async (app) => {
     '/v1/beings/:being_id/context',
     async (request, reply) => {
       const { being_id } = request.params
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const userId: string = (request as any).beingUserId
+      const userId: string = request.beingUserId
 
       // 1. Being 取得 + 所有権チェック
       const { data: being } = await supabase
@@ -80,6 +79,7 @@ export const beingContextRoute: FastifyPluginAsync = async (app) => {
         partnerType,
         supabase,
         userId,
+        beingId: being_id,
       })
 
       // 5. spec-39 形式に変換

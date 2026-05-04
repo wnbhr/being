@@ -7,7 +7,7 @@
  * DELETE /v1/beings/:being_id  Being削除
  *
  * 認証: index.ts の onRequest フックで自動適用（Bearer BEING_API_TOKEN）
- * #546: (request as any).beingUserId でユーザー特定（DB認証後に注入）
+ * #546: request.beingUserId でユーザー特定（DB認証後に注入）
  *
  * #552
  */
@@ -32,8 +32,7 @@ const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey)
 export const beingCrudRoute: FastifyPluginAsync = async (app) => {
   // GET /v1/beings — Being一覧
   app.get('/v1/beings', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { data, error } = await supabase
       .from('beings')
       .select('*')
@@ -44,8 +43,7 @@ export const beingCrudRoute: FastifyPluginAsync = async (app) => {
 
   // POST /v1/beings — Being作成（デフォルトSOUL同時生成）
   app.post<{ Body: { name: string } }>('/v1/beings', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { name } = request.body
 
     if (!name) return reply.code(400).send({ error: 'name is required' })
@@ -60,7 +58,7 @@ export const beingCrudRoute: FastifyPluginAsync = async (app) => {
     // デフォルトSOUL自動生成（失敗してもBeing作成自体は成功扱い）
     const { error: soulError } = await supabase
       .from('souls')
-      .insert({ being_id: being.id, name, partner_type: name.toLowerCase() })
+      .insert({ being_id: being.id, name, partner_type: 'custom', user_id: userId })
     if (soulError) {
       console.warn(`[being-crud] soul insert failed for being ${being.id}:`, soulError.message)
     }
@@ -88,8 +86,7 @@ export const beingCrudRoute: FastifyPluginAsync = async (app) => {
 
   // GET /v1/beings/:being_id — Being詳細
   app.get<{ Params: { being_id: string } }>('/v1/beings/:being_id', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id } = request.params
 
     const { data } = await supabase
@@ -105,8 +102,7 @@ export const beingCrudRoute: FastifyPluginAsync = async (app) => {
 
   // DELETE /v1/beings/:being_id — Being削除（FK ON DELETE CASCADE 前提）
   app.delete<{ Params: { being_id: string } }>('/v1/beings/:being_id', async (request, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userId: string = (request as any).beingUserId
+    const userId: string = request.beingUserId
     const { being_id } = request.params
 
     // 所有権チェック（存在を隠す → 不一致でも404）

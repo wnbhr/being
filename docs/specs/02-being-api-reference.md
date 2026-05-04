@@ -97,6 +97,8 @@ curl https://being.ruddia.com/v1/beings \
 
 Create a new Being. Automatically generates an Ed25519 key pair.
 
+Multiple Beings can be created per user. All Beings are of `partner_type: "custom"` internally; uniqueness is by `being_id`, not by name.
+
 **Request body:**
 ```json
 { "name": "Aria" }
@@ -400,7 +402,7 @@ curl -X PUT https://being.ruddia.com/v1/beings/abc123/preferences \
 
 ### `GET /v1/beings/:being_id/relationships`
 
-List relationship records for this Being's partner type.
+List relationship records for this Being. Records are scoped to the Being (`being_id`) when available.
 
 ```bash
 curl https://being.ruddia.com/v1/beings/abc123/relationships \
@@ -521,6 +523,7 @@ curl -X POST https://being.ruddia.com/v1/beings/abc123/notes \
   "content": "User is preparing for a product launch in May.",
   "created_at": "2026-04-14T17:00:00Z"
 }
+```
 
 ---
 
