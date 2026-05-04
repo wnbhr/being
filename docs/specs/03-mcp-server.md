@@ -58,9 +58,9 @@ Pass `X-LLM-API-Key: <anthropic_key>` to enable LLM-dependent features (patrol c
 |-----------|------|----------|-------------|
 | `user_message` | `string` | ✅ | The current user message to search against |
 
-**Returns:** A `<memory-recall>` block containing shuffled fragments of `action` and `feeling` from matched nodes, with cluster boundaries intentionally blurred — mimicking human associative recall. Empty message if nothing matched.
+**Returns:** A `<memory-recall>` block containing top-3 similar nodes (direct node-level vector search), shuffled as fragments, or an empty message if nothing matched.
 
-**Mechanism:** Embeds `user_message` with `text-embedding-3-small` (256-dim), calls `match_clusters` RPC, collects top-3 active nodes per cluster, increments `reactivation_count` on all returned nodes, then shuffles `action`/`feeling` values across all nodes into a single fragment string.
+**Mechanism:** Embeds `user_message` with `text-embedding-3-small` (1536-dim), calls `match_nodes` RPC, increments `reactivation_count` on returned nodes.
 
 ---
 
@@ -80,19 +80,19 @@ Takes no parameters.
 | `metadata.soul_name` | Soul display name |
 | `metadata.model_recommendation` | Suggested LLM model (`claude-sonnet-4-6`) |
 | `metadata.cache_guidance` | Hints for prompt caching — `system_prompt` is stable; `snapshot` is semi-stable |
-| `capability_tools` | Array of `{ name, description }` for `act`-type capabilities registered by connected Bridges. Each capability also has a corresponding `act_*` MCP tool registered dynamically on the server (see below). |
+| `capability_tools` | Array of `{ name, description }` for `act`-type capabilities registered by connected Bridges |
 | `recent_nodes` | Up to 5 recently activated memory nodes as plain text |
-| `pending_senses` | _(optional)_ Array of unprocessed sense events from `sense_log`. Present only when there are unprocessed rows. Each entry includes `id`, `capability_id`, `bridge_id`, `data`, `created_at`. Rows are marked `processed=true` immediately after being returned. |
 
 ---
 
 ### `recall_memory`
 
-Explore memory clusters. Without `cluster_id`, returns the cluster list. With `cluster_id`, returns the cluster digest and its top nodes.
+Explore memory clusters or individual nodes. Without `cluster_id`, returns the cluster list. With `cluster_id`, returns the cluster digest and its top nodes. With `node_id`, returns the details of a single node.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster_id` | `string` (UUID) | — | Omit to list all clusters |
+| `node_id` | `string` (UUID) | — | Specify to get a single node's details (cluster_id not needed) |
 | `limit` | `number` | — | Max nodes to return (default 5) |
 | `query` | `string` | — | Keyword filter applied to node `action` field |
 | `no_nodes` | `boolean` | — | Return digest only, no nodes |
@@ -105,15 +105,15 @@ Explore memory clusters. Without `cluster_id`, returns the cluster list. With `c
 
 ### `search_memory`
 
-Keyword search across `memory_nodes` without needing a cluster ID. Searches `action`, `feeling`, and `themes` fields.
+Vector search across `memory_nodes` without needing a cluster ID. Falls back to keyword search when `OPENAI_API_KEY` is not set.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `query` | `string` | ✅ | Space-separated keywords. Each term is matched against `action`, `feeling`, and `themes` |
-| `mode` | `string` | — | `"or"` (default): any term matches. `"and"`: all terms must match |
+| `query` | `string` | ✅ | Search query — embedded as vector when API key available, otherwise keyword match |
 | `limit` | `number` | — | Max results (default 10, max 30) |
+| `mode` | `string` | — | `"or"` (default) or `"and"` — applies to keyword fallback only |
 
-**Returns:** Matched nodes ordered by `importance` desc, formatted as scene text lines.
+**Returns:** Matched nodes formatted as scene text lines. Result header indicates whether vector or keyword search was used.
 
 ---
 
@@ -243,31 +243,6 @@ Returns the current datetime in the specified timezone.
 ```json
 { "datetime": "2026/04/14（火） 16:30:00", "iso": "2026-04-14T07:30:00.000Z", "timezone": "Asia/Tokyo" }
 ```
-
----
-
-### `act_*` — Dynamic Act Tools
-
-When `createMcpServer` is initialized, it queries the `capabilities` table for `act`-type capabilities belonging to **currently connected** Bridges. For each matching capability, a tool is registered dynamically:
-
-- **Tool name**: `act_${cap.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`
-- **Description**: capability's `description` field (or `"<name> を実行する"` as fallback)
-- **Parameters**:
-
-  | Parameter | Type | Required | Description |
-  |-----------|------|----------|-------------|
-  | `action` | `string` | ✅ | Action to execute. When `config.actions` is set, valid values are listed in the description. |
-  | `parameters` | `object` | — | Action-specific key-value payload |
-  | `timeout_ms` | `number` | — | Timeout in milliseconds (default: 5000) |
-
-**Execution flow:**
-1. If the Bridge is connected → delegates to `handleActTool()` → result returned as JSON.
-2. If the Bridge is **not** connected → queues the action in `act_queue` with `status='pending'`. Returns:
-   ```json
-   { "queue_id": "<uuid>", "status": "pending", "message": "Bridge is not connected. Action queued for later execution." }
-   ```
-
-These tools are not listed in `capability_tools` (which is a plain-object summary for the LLM client); they are fully registered as callable MCP tools on the server.
 
 ---
 
