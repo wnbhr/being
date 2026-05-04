@@ -58,9 +58,9 @@ Pass `X-LLM-API-Key: <anthropic_key>` to enable LLM-dependent features (patrol c
 |-----------|------|----------|-------------|
 | `user_message` | `string` | ✅ | The current user message to search against |
 
-**Returns:** A `<memory-recall>` block containing matched cluster names and top-3 active nodes per cluster, or an empty message if nothing matched.
+**Returns:** A `<memory-recall>` block containing top-3 similar nodes (direct node-level vector search), shuffled as fragments, or an empty message if nothing matched.
 
-**Mechanism:** Embeds `user_message` with `text-embedding-3-small` (256-dim), calls `match_clusters` RPC, increments `reactivation_count` on returned nodes.
+**Mechanism:** Embeds `user_message` with `text-embedding-3-small` (1536-dim), calls `match_nodes` RPC, increments `reactivation_count` on returned nodes.
 
 ---
 
@@ -87,11 +87,12 @@ Takes no parameters.
 
 ### `recall_memory`
 
-Explore memory clusters. Without `cluster_id`, returns the cluster list. With `cluster_id`, returns the cluster digest and its top nodes.
+Explore memory clusters or individual nodes. Without `cluster_id`, returns the cluster list. With `cluster_id`, returns the cluster digest and its top nodes. With `node_id`, returns the details of a single node.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster_id` | `string` (UUID) | — | Omit to list all clusters |
+| `node_id` | `string` (UUID) | — | Specify to get a single node's details (cluster_id not needed) |
 | `limit` | `number` | — | Max nodes to return (default 5) |
 | `query` | `string` | — | Keyword filter applied to node `action` field |
 | `no_nodes` | `boolean` | — | Return digest only, no nodes |
@@ -104,14 +105,15 @@ Explore memory clusters. Without `cluster_id`, returns the cluster list. With `c
 
 ### `search_memory`
 
-Keyword search across `memory_nodes` without needing a cluster ID.
+Vector search across `memory_nodes` without needing a cluster ID. Falls back to keyword search when `OPENAI_API_KEY` is not set.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `query` | `string` | ✅ | Partial-match keyword (case-insensitive) |
+| `query` | `string` | ✅ | Search query — embedded as vector when API key available, otherwise keyword match |
 | `limit` | `number` | — | Max results (default 10, max 30) |
+| `mode` | `string` | — | `"or"` (default) or `"and"` — applies to keyword fallback only |
 
-**Returns:** Matched nodes ordered by `importance` desc, formatted as scene text lines.
+**Returns:** Matched nodes formatted as scene text lines. Result header indicates whether vector or keyword search was used.
 
 ---
 
