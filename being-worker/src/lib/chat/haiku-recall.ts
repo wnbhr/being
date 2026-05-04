@@ -32,47 +32,30 @@ async function runVectorRecall(store: MemoryStore, userMessage: string): Promise
   // 1. ユーザーメッセージを embed
   const queryVector = await embedText(userMessage)
 
-  // 2. 類似クラスタを検索
-  const matches = await store.findSimilarClusters(queryVector)
-  if (matches.length === 0) return ''
+  // 2. 類似ノードを直接検索（spec-946: クラスタレベル → ノードレベル）
+  const nodeMatches = await store.findSimilarNodes(queryVector, 3, 0.35)
+  if (nodeMatches.length === 0) return ''
 
-  // 3. 各クラスタのノードを取得し、reactivation_count をインクリメント
-  const parts: string[] = []
+  // 3. ヒットノードを取得し、reactivation_count をインクリメント
+  const nodeIds = nodeMatches.map((m) => m.id)
+  const nodes = await store.getNodesByIds(nodeIds)
 
-  for (const match of matches) {
-    const cluster = await store.getCluster(match.id)
-    if (!cluster) continue
-
-    const nodes = await store.getNodes({
-      clusterId: match.id,
-      status: 'active',
-      orderBy: 'importance',
-      orderDirection: 'desc',
-      limit: 3,
+  if (nodes.length > 0) {
+    await store.incrementReactivationCounts(nodes.map((n) => n.id)).catch((err) => {
+      console.warn('[haiku-recall] incrementReactivationCounts failed (ignored):', err)
     })
-
-    if (nodes.length > 0) {
-      await store.incrementReactivationCounts(nodes.map((n) => n.id)).catch((err) => {
-        console.warn('[haiku-recall] incrementReactivationCounts failed (ignored):', err)
-      })
-    }
-
-    const digestLine = cluster.digest ? `${cluster.digest}` : ''
-    const nodeLines = nodes
-      .map((n) => `- ${sceneToText(n.scene, n.feeling)}`)
-      .join('\n')
-
-    const section = [
-      `[${cluster.name}]${digestLine ? ` ${digestLine}` : ''}`,
-      nodeLines,
-    ]
-      .filter(Boolean)
-      .join('\n')
-
-    if (section) parts.push(section)
   }
 
-  return parts.join('\n\n')
+  const parts: string[] = []
+  for (const match of nodeMatches) {
+    const node = nodes.find((n) => n.id === match.id)
+    if (!node) continue
+    const line = sceneToText(node.scene, node.feeling)
+    // node_id / cluster_id を深掘り用に含める
+    parts.push(`- ${line} [node_id: ${node.id}${node.cluster_id ? `, cluster_id: ${node.cluster_id}` : ''}]`)
+  }
+
+  return parts.join('\n')
 }
 
 // ──────────────────────────────────────────────

@@ -21,16 +21,16 @@ import { recomputeClusterVector } from '../memory/embedding.js'
 export const RECALL_MEMORY_TOOL = {
   name: 'recall_memory',
   description:
-    '指定したクラスタの記憶ダイジェストとノードを取得する。通常の会話ではHaikuフロントで自動注入されるが、特定のクラスタを深掘りしたい時に使う。',
+    '指定したクラスタまたはノードの記憶を取得する。cluster_id指定: クラスタ内ノード一覧。node_id指定: 特定ノードの詳細。recallツールが返したcluster_id/node_idを使って深掘りするユースケース。',
   input_schema: {
     type: 'object',
     properties: {
       cluster_id: { type: 'string', description: 'クラスタID（UUID）' },
+      node_id: { type: 'string', description: 'ノードID（UUID）— 指定時はそのノードの詳細を返す' },
       limit: { type: 'number', description: '返すノード数（デフォルト5）' },
       query: { type: 'string', description: 'ノード絞り込み用キーワード（action/dialogueにilike検索、省略可）' },
       no_nodes: { type: 'boolean', description: 'trueでdigestのみ返す' },
     },
-    required: ['cluster_id'],
   },
 } as const
 
@@ -56,8 +56,26 @@ export const MERGE_NODES_TOOL = {
 
 export async function handleRecallMemory(
   store: MemoryStore,
-  input: { cluster_id: string; limit?: number; query?: string; no_nodes?: boolean }
+  input: { cluster_id?: string; node_id?: string; limit?: number; query?: string; no_nodes?: boolean }
 ): Promise<string> {
+  // node_id 指定: 特定ノードの詳細を返す（spec-946）
+  if (input.node_id && !input.cluster_id) {
+    const nodes = await store.getNodesByIds([input.node_id])
+    const node = nodes[0]
+    if (!node) return `ノード ${input.node_id} は見つかりませんでした`
+    const lines = [
+      `[ノード: ${node.id}]`,
+      `action: ${node.scene?.action ?? '（なし）'}`,
+      `feeling: ${node.feeling ?? '（なし）'}`,
+      `themes: ${node.themes?.join(', ') ?? '（なし）'}`,
+      `importance: ${node.importance ?? '—'}`,
+      `cluster_id: ${node.cluster_id ?? '（なし）'}`,
+    ]
+    return lines.join('\n')
+  }
+
+  if (!input.cluster_id) return 'cluster_id または node_id を指定してください'
+
   // 1. クラスタを取得
   const cluster = await store.getCluster(input.cluster_id)
 

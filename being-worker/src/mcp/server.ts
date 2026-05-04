@@ -77,14 +77,34 @@ export function createMcpServer(
   // ── search_memory ──────────────────────────────────────────────────────────
   server.tool(
     'search_memory',
-    '記憶ノード（memory_nodes）をキーワードで検索する。過去の体験・感情・出来事を思い出したい時に使う。recall_memoryと違いcluster_idは不要。',
+    '記憶ノード（memory_nodes）をベクトル検索する。過去の体験・感情・出来事を思い出したい時に使う。recall_memoryと違いcluster_idは不要。OPENAI_API_KEY未設定時はキーワード検索にフォールバック。',
     {
-      query: z.string().describe('検索キーワード（部分一致）'),
+      query: z.string().describe('検索クエリ（ベクトル検索またはキーワード部分一致）'),
       limit: z.number().optional().describe('返す件数（デフォルト10、最大30）'),
     },
     async (args) => {
       try {
         const limit = Math.min(args.limit ?? 10, 30)
+
+        // ベクトル検索（OPENAI_API_KEY必須）— spec-946
+        if (process.env.OPENAI_API_KEY) {
+          const { embedText } = await import('../lib/memory/embedding.js')
+          const queryVector = await embedText(args.query)
+          const nodeMatches = await store.findSimilarNodes(queryVector, limit, 0.35)
+          if (nodeMatches.length > 0) {
+            const nodeIds = nodeMatches.map((m) => m.id)
+            const nodes = await store.getNodesByIds(nodeIds)
+            const lines = nodeMatches.map((m) => {
+              const node = nodes.find((n) => n.id === m.id)
+              if (!node) return null
+              return `- [node_id: ${node.id}${node.cluster_id ? `, cluster_id: ${node.cluster_id}` : ''}] ${sceneToText(node.scene as import('../lib/chat/scene-utils.js').Scene | null, node.feeling)}${node.themes ? ` (themes: ${(node.themes as string[]).join(', ')})` : ''}`
+            }).filter(Boolean)
+            return { content: [{ type: 'text' as const, text: `記憶 ${lines.length}件（ベクトル検索）:\n${lines.join('\n')}` }] }
+          }
+          return { content: [{ type: 'text' as const, text: `「${args.query}」に関する記憶は見つかりませんでした。` }] }
+        }
+
+        // フォールバック: ilike検索（OPENAI_API_KEY未設定時）
         const nodes = await store.getNodes({
           actionQuery: args.query,
           limit,
@@ -97,7 +117,7 @@ export function createMcpServer(
         const lines = nodes.map(n =>
           `- [${n.id}] ${sceneToText(n.scene as import('../lib/chat/scene-utils.js').Scene | null, n.feeling)}${n.themes ? ` (themes: ${(n.themes as string[]).join(', ')})` : ''}`
         )
-        return { content: [{ type: 'text' as const, text: `記憶 ${nodes.length}件:\n${lines.join('\n')}` }] }
+        return { content: [{ type: 'text' as const, text: `記憶 ${nodes.length}件（キーワード検索）:\n${lines.join('\n')}` }] }
       } catch (err) {
         return { content: [{ type: 'text' as const, text: `error: ${String(err)}` }], isError: true }
       }

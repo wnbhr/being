@@ -18,7 +18,7 @@ import type { MemoryStore, MemoryNode } from '../memory/types.js'
 import type { LLMProvider } from '../llm/types.js'
 import type { Scene } from './scene-utils.js'
 import type { SceneInput } from './update-notes.js'
-import { embedTexts, recomputeClusterVector } from '../memory/embedding.js'
+import { embedTexts, recomputeClusterVector, nodeToEmbedText } from '../memory/embedding.js'
 
 // ──────────────────────────────────────────────
 // 型定義
@@ -242,11 +242,17 @@ async function step1_saveAndAssignNodes(store: MemoryStore, apiKey?: string): Pr
 
   const nodeIds = await store.saveNodes(nodePayloads)
 
-  // action を一括 embedding（OpenAI API 1回）
+  // when+action+feeling を一括 embedding（OpenAI API 1回）— spec-946
   const actions = valid.map(({ sceneInput }) => sceneInput.action)
+  const embedTextsInput = valid.map(({ sceneInput }) =>
+    nodeToEmbedText(
+      { when: sceneInput.when, action: sceneInput.action } as Scene,
+      sceneInput.feeling ?? null
+    )
+  )
   let embeddings: number[][] = []
   try {
-    embeddings = await embedTexts(actions)
+    embeddings = await embedTexts(embedTextsInput)
   } catch (err) {
     console.warn('[graph] ❶ embedTexts failed, skipping cluster assignment:', err)
   }
@@ -295,6 +301,20 @@ async function step1_saveAndAssignNodes(store: MemoryStore, apiKey?: string): Pr
   for (const clusterId of affectedClusterIds) {
     await recomputeClusterVector(store, clusterId).catch((err) => {
       console.warn('[graph] ❶ recomputeClusterVector failed:', clusterId, err)
+    })
+  }
+
+  // ノードvectorをDBに保存（spec-946: ノードレベルベクトル検索用）
+  const nodeVectorUpdates: Array<{ id: string; vector: number[] }> = []
+  for (let i = 0; i < nodeIds.length; i++) {
+    const nodeId = nodeIds[i]
+    if (nodeId && embeddings[i]) {
+      nodeVectorUpdates.push({ id: nodeId, vector: embeddings[i] })
+    }
+  }
+  if (nodeVectorUpdates.length > 0) {
+    await store.updateNodeVectors(nodeVectorUpdates).catch((err) => {
+      console.warn('[graph] ❶ updateNodeVectors failed (ignored):', err)
     })
   }
 

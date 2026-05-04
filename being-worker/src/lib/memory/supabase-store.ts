@@ -209,9 +209,49 @@ export function createSupabaseMemoryStore(
         query_embedding: queryVector,
         match_threshold: threshold,
         match_count: topK,
+        ...(beingId ? { p_being_id: beingId } : {}),
       })
       if (error) throw new Error(`findSimilarClusters failed: ${error.message}`)
       return (data as Array<{ id: string; name: string; similarity: number }> | null) ?? []
+    },
+
+    async findSimilarNodes(
+      queryVector: number[],
+      topK = 5,
+      threshold = 0.35
+    ): Promise<Array<{ id: string; cluster_id: string | null; similarity: number }>> {
+      const { data, error } = await supabase.rpc('match_nodes', {
+        p_user_id: userId,
+        query_embedding: queryVector,
+        match_threshold: threshold,
+        match_count: topK,
+        ...(beingId ? { p_being_id: beingId } : {}),
+      })
+      if (error) throw new Error(`findSimilarNodes failed: ${error.message}`)
+      return (data as Array<{ id: string; cluster_id: string | null; similarity: number }> | null) ?? []
+    },
+
+    async updateNodeVector(nodeId: string, vector: number[]): Promise<void> {
+      const { error } = await supabase
+        .from('memory_nodes')
+        .update({ vector })
+        .eq('id', nodeId)
+        .eq('user_id', userId)
+      if (error) throw new Error(`updateNodeVector failed: ${error.message}`)
+    },
+
+    async updateNodeVectors(updates: Array<{ id: string; vector: number[] }>): Promise<void> {
+      // 一件ずつ更新（Supabaseは一括 upsertでvectorを上書きできるが、id+user_id の複合キーのため小分けで実行）
+      for (const { id, vector } of updates) {
+        const { error } = await supabase
+          .from('memory_nodes')
+          .update({ vector })
+          .eq('id', id)
+          .eq('user_id', userId)
+        if (error) {
+          console.warn(`[supabase-store] updateNodeVectors: failed for node ${id}:`, error.message)
+        }
+      }
     },
 
     async updateCluster(clusterId: string, updates: Partial<Pick<Cluster, 'name' | 'digest' | 'parent_id' | 'vector' | 'is_parent'>>): Promise<void> {

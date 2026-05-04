@@ -248,6 +248,12 @@ export interface MemoryStore {
   reviveDeadNodes(): Promise<number>
   /** cosine類似度でクラスタを検索（spec-31）。OPENAI_API_KEYがない場合は空配列を返す */
   findSimilarClusters(queryVector: number[], topK?: number, threshold?: number): Promise<Array<{ id: string; name: string; similarity: number }>>
+  /** cosine類似度でノードを検索（spec-946 match_nodes RPC）*/
+  findSimilarNodes(queryVector: number[], topK?: number, threshold?: number): Promise<Array<{ id: string; cluster_id: string | null; similarity: number }>>
+  /** ノードのvectorを更新（spec-946）*/
+  updateNodeVector(nodeId: string, vector: number[]): Promise<void>
+  /** ノードのvectorを一括更新（spec-946）*/
+  updateNodeVectors(updates: Array<{ id: string; vector: number[] }>): Promise<void>
 
 
 
