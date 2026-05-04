@@ -63,37 +63,24 @@ async function runVectorRecall(store: MemoryStore, userMessage: string): Promise
   // 1. ユーザーメッセージを embed
   const queryVector = await embedText(userMessage)
 
-  // 2. 類似クラスタを検索
-  const matches = await store.findSimilarClusters(queryVector, 2)
+  // 2. issue-946: findSimilarNodes でノードを直接取得（top-3）
+  const matches = await store.findSimilarNodes(queryVector, 3)
   if (matches.length === 0) return ''
 
-  // 3. 各クラスタのノードを取得し、reactivation_count をインクリメント
-  const allNodes: Array<{ scene: Scene | null; feeling?: string | null }> = []
+  // 3. ノードの実データを取得し、reactivation_count をインクリメント
+  const nodeIds = matches.map((m) => m.id)
+  const nodes = await store.getNodesByIds(nodeIds)
 
-  for (const match of matches) {
-    const cluster = await store.getCluster(match.id)
-    if (!cluster) continue
-
-    const nodes = await store.getNodes({
-      clusterId: match.id,
-      status: 'active',
-      orderBy: 'importance',
-      orderDirection: 'desc',
-      limit: 3,
+  if (nodes.length > 0) {
+    await store.incrementReactivationCounts(nodes.map((n) => n.id)).catch((err) => {
+      console.warn('[haiku-recall] incrementReactivationCounts failed (ignored):', err)
     })
-
-    if (nodes.length > 0) {
-      await store.incrementReactivationCounts(nodes.map((n) => n.id)).catch((err) => {
-        console.warn('[haiku-recall] incrementReactivationCounts failed (ignored):', err)
-      })
-      allNodes.push(...nodes)
-    }
   }
 
-  if (allNodes.length === 0) return ''
+  if (nodes.length === 0) return ''
 
   // 4. 断片モード: 全ノードの action/feeling をシャッフルして混ぜる
-  return toFragments(allNodes)
+  return toFragments(nodes)
 }
 
 // ──────────────────────────────────────────────

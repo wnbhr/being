@@ -18,7 +18,7 @@ import type { MemoryStore, MemoryNode } from '../memory/types.js'
 import type { LLMProvider } from '../llm/types.js'
 import type { Scene, WhenItem } from './scene-utils.js'
 import type { SceneInput } from './update-notes.js'
-import { embedTexts, recomputeClusterVector } from '../memory/embedding.js'
+import { embedTexts, recomputeClusterVector, nodeToEmbedText } from '../memory/embedding.js'
 
 // ──────────────────────────────────────────────
 // 型定義
@@ -242,13 +242,33 @@ async function step1_saveAndAssignNodes(store: MemoryStore, apiKey?: string): Pr
 
   const nodeIds = await store.saveNodes(nodePayloads)
 
-  // action を一括 embedding（OpenAI API 1回）
+  // issue-946: when+action+feeling を結合してembedding（ノードvectorとクラスタ割付の両方に使う）
   const actions = valid.map(({ sceneInput }) => sceneInput.action)
+  const embedInputs = valid.map(({ sceneInput }) =>
+    nodeToEmbedText(
+      { action: sceneInput.action, when: sceneInput.when ?? [], actors: sceneInput.actors ?? [], setting: sceneInput.setting },
+      sceneInput.feeling ?? null
+    )
+  )
   let embeddings: number[][] = []
   try {
-    embeddings = await embedTexts(actions)
+    embeddings = await embedTexts(embedInputs)
   } catch (err) {
     console.warn('[graph] ❶ embedTexts failed, skipping cluster assignment:', err)
+  }
+
+  // issue-946: ノードvectorを保存（クラスタ割付より前、失敗は警告のみ）
+  if (embeddings.length > 0) {
+    try {
+      const vectorUpdates = nodeIds
+        .map((id, i) => id && embeddings[i] ? { id, vector: embeddings[i] } : null)
+        .filter((u): u is { id: string; vector: number[] } => u !== null)
+      if (vectorUpdates.length > 0) {
+        await store.updateNodeVectors(vectorUpdates)
+      }
+    } catch (err) {
+      console.warn('[graph] ❶ updateNodeVectors failed (ignored):', err)
+    }
   }
 
   const savedNodes: Array<{ id: string; content: string }> = []

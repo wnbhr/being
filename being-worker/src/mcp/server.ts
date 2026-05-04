@@ -20,6 +20,7 @@ import { buildSystemPrompt, buildBlock1B, type SystemBlock } from '../lib/chat/s
 import { getBridgesByUser, getBridgeById } from '../bridge/bridge-manager.js'
 import { haikuFrontRecall } from '../lib/chat/haiku-recall.js'
 import { sceneToText } from '../lib/chat/scene-utils.js'
+import { embedText } from '../lib/memory/embedding.js'
 import { handleActTool } from '../lib/chat/act-tool.js'
 import { handleRemoteExec } from '../lib/chat/remote-exec.js'
 
@@ -89,18 +90,48 @@ export async function createMcpServer(
     async (args) => {
       try {
         const limit = Math.min(args.limit ?? 10, 30)
-        const nodes = await store.getNodes({
-          searchQuery: args.query,
-          searchMode: args.mode ?? 'or',
-          limit,
-          orderBy: 'importance',
-          orderDirection: 'desc',
-        })
+        let nodes: Awaited<ReturnType<typeof store.getNodes>>
+
+        // ベクトル検索（OPENAI_API_KEY がある場合）、なければキーワードフォールバック
+        let useVector = false
+        if (process.env.OPENAI_API_KEY) {
+          try {
+            const queryVector = await embedText(args.query)
+            const matches = await store.findSimilarNodes(queryVector, limit)
+            if (matches.length > 0) {
+              const nodeIds = matches.map(m => m.id)
+              nodes = await store.getNodesByIds(nodeIds)
+              useVector = true
+            } else {
+              nodes = []
+            }
+          } catch (vectorErr) {
+            console.warn('[search_memory] vector search failed, falling back to keyword:', vectorErr)
+            // フォールバック: キーワード検索
+            nodes = await store.getNodes({
+              searchQuery: args.query,
+              searchMode: args.mode ?? 'or',
+              limit,
+              orderBy: 'importance',
+              orderDirection: 'desc',
+            })
+          }
+        } else {
+          // キーワード検索（フォールバック）
+          nodes = await store.getNodes({
+            searchQuery: args.query,
+            searchMode: args.mode ?? 'or',
+            limit,
+            orderBy: 'importance',
+            orderDirection: 'desc',
+          })
+        }
+
         if (nodes.length === 0) {
           return { content: [{ type: 'text' as const, text: `「${args.query}」に関する記憶は見つかりませんでした。` }] }
         }
 
-        // どのフィールドにヒットしたかを判定するヘルパー
+        // どのフィールドにヒットしたかを判定するヘルパー（キーワード検索時のみ表示）
         const terms = args.query.trim().split(/\s+/).filter(Boolean).map(t => t.toLowerCase())
         const detectMatchedFields = (n: typeof nodes[number]): string[] => {
           const fields: string[] = []
@@ -124,11 +155,14 @@ export async function createMcpServer(
         if (activeIds.length > 0) store.incrementReactivationCounts(activeIds).catch(() => {})
 
         const lines = nodes.map(n => {
-          const matched = detectMatchedFields(n)
-          const matchTag = matched.length > 0 ? ` [matched: ${matched.join(',')}]` : ''
+          const matchTag = useVector ? '' : (() => {
+            const matched = detectMatchedFields(n)
+            return matched.length > 0 ? ` [matched: ${matched.join(',')}]` : ''
+          })()
           return `- [${n.id}]${matchTag} ${sceneToText(n.scene as import('../lib/chat/scene-utils.js').Scene | null, n.feeling)}${n.themes ? ` (themes: ${(n.themes as string[]).join(', ')})` : ''}`
         })
-        return { content: [{ type: 'text' as const, text: `記憶 ${nodes.length}件:\n${lines.join('\n')}` }] }
+        const searchMethod = useVector ? 'ベクトル検索' : 'キーワード検索'
+        return { content: [{ type: 'text' as const, text: `記憶 ${nodes.length}件 (${searchMethod}):\n${lines.join('\n')}` }] }
       } catch (err) {
         return { content: [{ type: 'text' as const, text: `error: ${String(err)}` }], isError: true }
       }

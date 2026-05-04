@@ -21,16 +21,17 @@ import { recomputeClusterVector } from '../memory/embedding.js'
 export const RECALL_MEMORY_TOOL = {
   name: 'recall_memory',
   description:
-    '指定したクラスタの記憶ダイジェストとノードを取得する。通常の会話ではHaikuフロントで自動注入されるが、特定のクラスタを深掘りしたい時に使う。',
+    '指定したクラスタの記憶ダイジェストとノードを取得する。通常の会話ではHaikuフロントで自動注入されるが、特定のクラスタまたはノードを深掘りしたい時に使う。',
   input_schema: {
     type: 'object',
     properties: {
       cluster_id: { type: 'string', description: 'クラスタID（UUID）' },
+      node_id: { type: 'string', description: 'ノードID（UUID）。指定するとそのノードの詳細を返す（cluster_id不要）' },
       limit: { type: 'number', description: '返すノード数（デフォルト5）' },
       query: { type: 'string', description: 'ノード絞り込み用キーワード（action/dialogueにilike検索、省略可）' },
       no_nodes: { type: 'boolean', description: 'trueでdigestのみ返す' },
     },
-    required: ['cluster_id'],
+    required: [],
   },
 } as const
 
@@ -56,8 +57,31 @@ export const MERGE_NODES_TOOL = {
 
 export async function handleRecallMemory(
   store: MemoryStore,
-  input: { cluster_id: string; limit?: number; query?: string; no_nodes?: boolean }
+  input: { cluster_id?: string; node_id?: string; limit?: number; query?: string; no_nodes?: boolean }
 ): Promise<string> {
+  // node_id 指定時: そのノードの詳細を返す
+  if (input.node_id) {
+    const nodes = await store.getNodesByIds([input.node_id])
+    if (nodes.length === 0) return `ノード ${input.node_id} は見つかりませんでした`
+    const n = nodes[0]
+    const lines = [
+      `ID: ${n.id}`,
+      `クラスタID: ${n.cluster_id ?? '（なし）'}`,
+      `action: ${n.scene?.action ?? '（なし）'}`,
+      `feeling: ${n.feeling ?? '（なし）'}`,
+      `themes: ${n.themes?.join(', ') ?? '（なし）'}`,
+      `importance: ${n.importance ?? '（なし）'}`,
+      `status: ${n.status ?? '（なし）'}`,
+      `reactivation_count: ${n.reactivation_count ?? 0}`,
+    ]
+    await store.incrementReactivationCounts([n.id]).catch(() => {})
+    return lines.join('\n')
+  }
+
+  if (!input.cluster_id) {
+    return 'クラスタIDまたはノードIDを指定してください。'
+  }
+
   // 1. クラスタを取得
   const cluster = await store.getCluster(input.cluster_id)
 
@@ -192,4 +216,3 @@ export async function handleMergeNodes(
   const newId = newIds[0] ?? '(unknown)'
   return `${nodes.length}件のノードを統合しました。新ノードID: ${newId}`
 }
-

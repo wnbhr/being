@@ -9,14 +9,14 @@
 
 const OPENAI_EMBEDDING_URL = 'https://api.openai.com/v1/embeddings'
 const EMBEDDING_MODEL = 'text-embedding-3-small'
-const EXPECTED_DIM = 256
+const EXPECTED_DIM = 1536
 
 // ──────────────────────────────────────────────
 // 単一テキスト embed
 // ──────────────────────────────────────────────
 
 /**
- * テキスト1件を256次元ベクトルにembedする。
+ * テキスト1件を1536次元ベクトルにembedする。
  */
 export async function embedText(text: string): Promise<number[]> {
   const apiKey = process.env.OPENAI_API_KEY
@@ -28,7 +28,7 @@ export async function embedText(text: string): Promise<number[]> {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model: EMBEDDING_MODEL, input: text, dimensions: EXPECTED_DIM }),
+    body: JSON.stringify({ model: EMBEDDING_MODEL, input: text }),
   })
 
   if (!response.ok) {
@@ -65,7 +65,7 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model: EMBEDDING_MODEL, input: texts, dimensions: EXPECTED_DIM }),
+    body: JSON.stringify({ model: EMBEDDING_MODEL, input: texts }),
   })
 
   if (!response.ok) {
@@ -106,6 +106,24 @@ export function averageVectors(vectors: number[][]): number[] {
 // ──────────────────────────────────────────────
 
 import type { MemoryStore } from './types.js'
+import type { Scene } from '../chat/scene-utils.js'
+
+// ──────────────────────────────────────────────
+// embed対象テキスト生成ヘルパー
+// ──────────────────────────────────────────────
+
+/**
+ * ノードの scene + feeling を結合してembedするテキストを生成する。
+ * when + action + feeling を結合（issue-946）。
+ */
+export function nodeToEmbedText(scene: Scene, feeling: string | null): string {
+  const when = scene.when?.length
+    ? `[${scene.when.join(', ')}] `
+    : ''
+  const action = scene.action || ''
+  const feel = feeling ? ` / ${feeling}` : ''
+  return `${when}${action}${feel}`
+}
 
 /**
  * クラスタ内全activeノードのaction textをembedし、平均ベクトルでクラスタを更新する。
@@ -121,13 +139,13 @@ export async function recomputeClusterVector(
   }
 
   const nodes = await store.getNodes({ clusterId, status: 'active' })
-  const actions = nodes
-    .map((n) => n.scene?.action)
-    .filter((a): a is string => typeof a === 'string' && a.trim().length > 0)
+  const embedTextsArr = nodes
+    .filter((n) => n.scene?.action?.trim())
+    .map((n) => nodeToEmbedText(n.scene!, n.feeling ?? null))
 
-  if (actions.length === 0) return
+  if (embedTextsArr.length === 0) return
 
-  const vectors = await embedTexts(actions)
+  const vectors = await embedTexts(embedTextsArr)
   const avg = averageVectors(vectors)
   await store.updateClusterVector(clusterId, avg)
 }
