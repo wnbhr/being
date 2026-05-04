@@ -33,6 +33,7 @@ Each node represents a single **scene**: one discrete event, decision, emotion, 
 | `pinned` | bool | Pinned nodes are never decayed |
 | `reactivation_count` | int | Incremented when the node is recalled; drives revival from `dead` |
 | `last_activated` | timestamptz | When the node was last accessed via recall |
+| `vector` | float8[] | 1536-dim embedding vector (`nodeToEmbedText(when + action + feeling)`); used for node-level similarity search |
 
 ### Layer 2 — `clusters`
 
@@ -43,7 +44,7 @@ Clusters group thematically related nodes. There are two levels:
 | **Root clusters** (`is_parent=true`) | `Business` and `Private` — top-level buckets. Self-referential `parent_id`. Never split by patrol. |
 | **Sub-clusters** | Topic-specific groups, e.g. "Friday evening dinner". Have a `parent_id` pointing to a root cluster. |
 
-Each cluster stores a `vector` (float8[], 256-dim) that is the average embedding of its active nodes' `action` texts. This vector powers cosine-similarity search.
+Each cluster stores a `vector` (float8[], 1536-dim) that is the average embedding of its active nodes' `nodeToEmbedText(when + action + feeling)` texts. This vector powers cosine-similarity search.
 
 ---
 
@@ -149,7 +150,7 @@ flowchart TD
 1. Reads all `type='scene'` entries from the `notes` table for this Being.
 2. Parses each as a `SceneInput` JSON object. Parse failures are marked `[PARSE_FAILED]` and retained for LLM self-repair.
 3. Inserts valid scenes as new `memory_nodes` with `fresh=true` and `importance = clamp(0, 1, scene.importance ?? 0.5)`.
-4. Embeds all `action` texts in a single OpenAI `text-embedding-3-small` API call (256 dimensions).
+4. Embeds all `nodeToEmbedText(when + action + feeling)` texts in a single OpenAI `text-embedding-3-small` API call (1536 dimensions, model default). Saves embedding as node `vector`. Also uses embeddings for cluster assignment.
 5. For each node, calls `match_clusters` RPC with `threshold=0.45`. If a matching cluster exists, assigns the node to it. If not, uses a Haiku LLM call to classify the action as `Business` or `Private` and falls back to the corresponding root cluster.
 6. Recomputes the vector for every affected cluster.
 
@@ -237,23 +238,21 @@ The log message at this point is:
 
 Every time `recall` is called (either via MCP or internally during chat):
 
-1. The user message is embedded with `text-embedding-3-small`.
-2. `findSimilarClusters` RPC (`match_clusters`) is called with `threshold=0.35`, returning up to 5 matching clusters.
-3. For each matched cluster, the top 3 active nodes (ordered by `importance` desc) are fetched.
-4. `reactivation_count` on those nodes is incremented by 1.
+1. The user message is embedded with `text-embedding-3-small` (1536-dim).
+2. `findSimilarNodes` RPC (`match_nodes`) is called with `threshold=0.35`, returning up to 3 matching nodes directly (node-level vector search).
+3. `reactivation_count` on those nodes is incremented by 1.
+4. Node `action` and `feeling` fields are shuffled together (Fisher-Yates) to produce a fragment stream that blurs node boundaries — resembling human associative memory.
 5. Results are returned wrapped in a `<memory-recall>` block:
 
 ```xml
 <memory-recall>
-[ClusterName] cluster digest text
-- when — setting — action — (feeling)
-- ...
-
-[AnotherCluster] ...
+action fragment / feeling fragment / another action / ...
 </memory-recall>
 ```
 
-If no clusters match, the tool returns an empty result (no tag).
+If no nodes match, the tool returns an empty result (no tag).
+
+**Fragment mode (`toFragments`):** All matched nodes' `action` and `feeling` texts are extracted, shuffled randomly, and joined with ` / `. Node boundaries are intentionally blurred so the AI receives the memories as a diffuse impression rather than a structured list.
 
 When `recall_memory` is called explicitly with a `cluster_id`, nodes in the result have their `reactivation_count` incremented: dead nodes by +2 (aggressive revival signal), active nodes by +1. Similarly, `search_memory` increments active nodes by +1 and dead nodes by +2 for all matching results.
 
