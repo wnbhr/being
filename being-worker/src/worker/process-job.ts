@@ -1333,7 +1333,6 @@ async function _processJob(jobId: string, job: JobRequest, cancelSignal: AbortSi
             })
           }
 
-          if (promptResult.noteIds.length > 0) await store.markNotesRead(promptResult.noteIds)
           if (promptResult.freshNodeIds.length > 0) await store.updateNodes(promptResult.freshNodeIds, { fresh: false })
 
           if (promptResult.partyMessageReadIds && promptResult.partyMessageReadIds.length > 0) {
