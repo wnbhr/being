@@ -220,8 +220,22 @@ export async function createMcpServer(
     {
       action: z.enum(['append', 'update']).optional().describe('append=追加（デフォルト）, update=既存sceneを統合置換'),
       scenes: z.array(sceneSchema).optional().describe('会話で生まれた記憶の断片（構造化）'),
-      notes: z.array(z.string()).optional().describe('走り書きメモ（巡回では消費されず残る。タスク・メモ・未解決事項など）'),
+      notes: z.array(
+        z.union([
+          z.string(),
+          z.object({
+            content: z.string().describe('メモの内容'),
+            type: z.enum(['note', 'someday']).optional().describe('note=通常メモ（デフォルト）、someday=いつかリスト（スナップショット除外）'),
+          }),
+        ])
+      ).optional().describe('走り書きメモ（巡回では消費されず残る。タスク・メモ・未解決事項など）。type=somedayはコンテキストから除外される「いつかリスト」'),
       scene_ids: z.array(z.string()).optional().describe('action=update時に削除する既存sceneのID'),
+      note_type_updates: z.array(
+        z.object({
+          id: z.string().describe('変更対象のID'),
+          type: z.enum(['note', 'someday']).describe('note=通常メモ、someday=いつかリスト'),
+        })
+      ).optional().describe('既存noteのtype変更（note↔someday切り替え）。updated_atも自動更新される'),
     },
     async (args) => {
       const partnerType = await getPartnerType()

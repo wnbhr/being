@@ -851,7 +851,7 @@ export function createSupabaseMemoryStore(
     async updateNoteContent(id: string, content: string): Promise<void> {
       let query = supabase
         .from('notes')
-        .update({ content })
+        .update({ content, updated_at: new Date().toISOString() })
         .eq('user_id', userId)
         .eq('id', id)
       if (beingId) query = query.eq('being_id', beingId)
@@ -859,11 +859,12 @@ export function createSupabaseMemoryStore(
       if (error) throw new Error(`updateNoteContent failed: ${error.message}`)
     },
 
-    async insertNote(content: string): Promise<NoteEntry> {
+    async insertNote(content: string, type: 'note' | 'someday' = 'note'): Promise<NoteEntry> {
+      const now = new Date().toISOString()
       const { data, error } = await supabase
         .from('notes')
-        .insert({ user_id: userId, content, read: false, type: 'note', ...(beingId ? { being_id: beingId } : {}) })
-        .select('id, content, read, created_at, type')
+        .insert({ user_id: userId, content, read: false, type, updated_at: now, ...(beingId ? { being_id: beingId } : {}) })
+        .select('id, content, read, created_at, updated_at, type')
         .single()
       if (error) throw new Error(`insertNote failed: ${error.message}`)
       return data as NoteEntry
@@ -894,10 +895,11 @@ export function createSupabaseMemoryStore(
     },
 
     async insertSceneNote(content: string): Promise<NoteEntry> {
+      const now = new Date().toISOString()
       const { data, error } = await supabase
         .from('notes')
-        .insert({ user_id: userId, content, read: false, type: 'scene', ...(beingId ? { being_id: beingId } : {}) })
-        .select('id, content, read, created_at, type')
+        .insert({ user_id: userId, content, read: false, type: 'scene', updated_at: now, ...(beingId ? { being_id: beingId } : {}) })
+        .select('id, content, read, created_at, updated_at, type')
         .single()
       if (error) throw new Error(`insertSceneNote failed: ${error.message}`)
       return data as NoteEntry
@@ -917,11 +919,11 @@ export function createSupabaseMemoryStore(
       if (error) throw new Error(`deleteSceneNotes failed: ${error.message}`)
     },
 
-    async getNotesByType(type: 'scene' | 'note'): Promise<NoteEntry[]> {
+    async getNotesByType(type: 'scene' | 'note' | 'someday'): Promise<NoteEntry[]> {
       // #802: being_id がある場合は自 Being の notes のみ取得
       let query = supabase
         .from('notes')
-        .select('id, content, read, created_at, type')
+        .select('id, content, read, created_at, updated_at, type')
         .eq('user_id', userId)
         .eq('type', type)
         .order('created_at', { ascending: true })
@@ -931,7 +933,7 @@ export function createSupabaseMemoryStore(
       return (data as NoteEntry[] | null) ?? []
     },
 
-    async deleteNotesByType(type: 'scene' | 'note'): Promise<void> {
+    async deleteNotesByType(type: 'scene' | 'note' | 'someday'): Promise<void> {
       // #799 Bug 4: type='scene' の場合は [PARSE_FAILED] マーカー付きを除外（LLM修復待ち）
       // #802: being_id がある場合は自 Being の notes のみ削除
       let query = supabase
@@ -945,6 +947,17 @@ export function createSupabaseMemoryStore(
       if (beingId) query = query.eq('being_id', beingId)
       const { error } = await query
       if (error) throw new Error(`deleteNotesByType failed: ${error.message}`)
+    },
+
+    async updateNoteType(id: string, type: 'note' | 'someday'): Promise<void> {
+      let query = supabase
+        .from('notes')
+        .update({ type, updated_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('id', id)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { error } = await query
+      if (error) throw new Error(`updateNoteType failed: ${error.message}`)
     },
 
     async deleteNotesByIds(ids: string[]): Promise<void> {

@@ -26,12 +26,18 @@ export interface SceneInput {
   importance?: number     // 0.0-1.0
 }
 
+export interface NoteInput {
+  content: string
+  type?: 'note' | 'someday'  // デフォルト: 'note'
+}
+
 export interface UpdateNotesInput {
   summary?: string  // deprecated: 後方互換のため残す
   action?: 'append' | 'update'  // デフォルト: 'append'
   scenes?: SceneInput[]
-  notes?: string[]
+  notes?: (string | NoteInput)[]  // 文字列またはtype付きNoteInput
   scene_ids?: string[]  // action=update 時に削除する既存 scene の ID
+  note_type_updates?: Array<{ id: string; type: 'note' | 'someday' }>  // 既存noteのtype変更
 }
 
 // ──────────────────────────────────────────────
@@ -69,13 +75,37 @@ export const UPDATE_NOTES_TOOL = {
       },
       notes: {
         type: 'array',
-        description: '走り書きメモ（任意）。巡回では消費されず、そのまま残る。タスク・メモ・未解決事項など。各要素は短い文字列。',
-        items: { type: 'string' },
+        description: '走り書きメモ（任意）。巡回では消費されず、そのまま残る。タスク・メモ・未解決事項など。文字列またはtype付きオブジェクト。type=\'someday\'はコンテキストから除外される「いつかリスト」。',
+        items: {
+          oneOf: [
+            { type: 'string' },
+            {
+              type: 'object',
+              properties: {
+                content: { type: 'string', description: 'メモの内容' },
+                type: { type: 'string', enum: ['note', 'someday'], description: 'note=通常メモ（デフォルト）、someday=いつかリスト（スナップショット除外）' },
+              },
+              required: ['content'],
+            },
+          ],
+        },
       },
       scene_ids: {
         type: 'array',
         description: 'action=update時に削除する既存sceneのID',
         items: { type: 'string' },
+      },
+      note_type_updates: {
+        type: 'array',
+        description: '既存noteのtype変更（note↔someday切り替え）。updated_atも自動更新される。',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: '変更対象のID' },
+            type: { type: 'string', enum: ['note', 'someday'] },
+          },
+          required: ['id', 'type'],
+        },
       },
     },
     required: [],
@@ -104,11 +134,11 @@ export async function handleUpdateNotes(
   input: UpdateNotesInput,
   options: UpdateNotesOptions = {}
 ): Promise<string> {
-  const { action = 'append', scenes, notes, scene_ids } = input
+  const { action = 'append', scenes, notes, scene_ids, note_type_updates } = input
   const { llmApiKey, beingId, userId, partnerType, supabase } = options
 
-  if ((!scenes || scenes.length === 0) && (!notes || notes.length === 0)) {
-    return 'error: scenes or notes のどちらか1つ以上を渡してください'
+  if ((!scenes || scenes.length === 0) && (!notes || notes.length === 0) && (!note_type_updates || note_type_updates.length === 0)) {
+    return 'error: scenes or notes or note_type_updates のどちらか1つ以上を渡してください'
   }
 
   try {
@@ -130,12 +160,27 @@ export async function handleUpdateNotes(
       }
     }
 
-    // 3. notes を type='note' で保存（non-fatal）
+    // 3. notes を指定 type で保存（non-fatal）
     if (notes && notes.length > 0) {
       try {
-        await Promise.all(notes.map((n) => store.insertNote(n)))
+        await Promise.all(notes.map((n) => {
+          if (typeof n === 'string') {
+            return store.insertNote(n, 'note')
+          } else {
+            return store.insertNote(n.content, n.type ?? 'note')
+          }
+        }))
       } catch (notesErr) {
         console.warn('[update_notes] insertNote failed (ignored):', notesErr)
+      }
+    }
+
+    // 3b. note_type_updates: 既存noteのtype変更（non-fatal）
+    if (note_type_updates && note_type_updates.length > 0) {
+      try {
+        await Promise.all(note_type_updates.map((u) => store.updateNoteType(u.id, u.type)))
+      } catch (typeUpdateErr) {
+        console.warn('[update_notes] updateNoteType failed (ignored):', typeUpdateErr)
       }
     }
 

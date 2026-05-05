@@ -109,6 +109,7 @@ export interface NoteEntry {
   content: string
   read: boolean
   created_at: string
+  updated_at?: string
   type: string
 }
 
@@ -325,7 +326,7 @@ export interface MemoryStore {
   /** 全notes取得（type='note'のみ、最新50件、created_at降順） */
   getAllNotes(): Promise<NoteEntry[]>
   /** notesテーブルに新規エントリをINSERT */
-  insertNote(content: string): Promise<NoteEntry>
+  insertNote(content: string, type?: 'note' | 'someday'): Promise<NoteEntry>
   /** 特定エントリのcontentを更新 */
   updateNoteContent(id: string, content: string): Promise<void>
   /** 特定エントリを削除 */
@@ -337,9 +338,11 @@ export interface MemoryStore {
   /** 全sceneを削除（type='scene'） */
   deleteSceneNotes(): Promise<void>
   /** type指定でnotesを取得 */
-  getNotesByType(type: 'scene' | 'note'): Promise<NoteEntry[]>
+  getNotesByType(type: 'scene' | 'note' | 'someday'): Promise<NoteEntry[]>
   /** type指定でnotesを一括削除 */
-  deleteNotesByType(type: 'scene' | 'note'): Promise<void>
+  deleteNotesByType(type: 'scene' | 'note' | 'someday'): Promise<void>
+  /** noteのtypeを変更し updated_at を更新 */
+  updateNoteType(id: string, type: 'note' | 'someday'): Promise<void>
   /** 指定IDのnotesを一括削除（action=update 用） */
   deleteNotesByIds(ids: string[]): Promise<void>
 
