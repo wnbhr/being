@@ -322,8 +322,6 @@ export interface MemoryStore {
   deleteRelationship(personName: string, partnerType?: string): Promise<void>
 
   // --- notes ---
-  getUnreadNotes(): Promise<NoteEntry[]>
-  markNotesRead(noteIds: string[]): Promise<void>
   /** 全notes取得（type='note'のみ、最新50件、created_at降順） */
   getAllNotes(): Promise<NoteEntry[]>
   /** notesテーブルに新規エントリをINSERT */

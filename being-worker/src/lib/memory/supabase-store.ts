@@ -835,32 +835,6 @@ export function createSupabaseMemoryStore(
 
     // ── notes ──
 
-    async getUnreadNotes(): Promise<NoteEntry[]> {
-      let query = supabase
-        .from('notes')
-        .select('id, content, type')
-        .eq('user_id', userId)
-        .eq('read', false)
-        .in('type', ['note', 'scene'])
-      // #791: being_id フィルタ
-      if (beingId) query = query.eq('being_id', beingId)
-      const { data, error } = await query.order('created_at', { ascending: true })
-      if (error) throw new Error(`getUnreadNotes failed: ${error.message}`)
-      return (data as NoteEntry[] | null) ?? []
-    },
-
-    async markNotesRead(noteIds: string[]): Promise<void> {
-      if (noteIds.length === 0) return
-      let query = supabase
-        .from('notes')
-        .update({ read: true })
-        .eq('user_id', userId)
-        .in('id', noteIds)
-      if (beingId) query = query.eq('being_id', beingId)
-      const { error } = await query
-      if (error) throw new Error(`markNotesRead failed: ${error.message}`)
-    },
-
     async getAllNotes(): Promise<NoteEntry[]> {
       let query = supabase
         .from('notes')

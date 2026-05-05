@@ -52,8 +52,6 @@ export interface SystemPromptResult {
   prefixMessages: Message[]
   /** ブロック2-Bの内容（DB保存用。空文字の場合は保存不要） */
   block2BContent: string
-  /** API呼び出し成功後に read: true にする inbox の ID リスト */
-  noteIds: string[]
   /** API呼び出し成功後に fresh: false にする memory_nodes の ID リスト */
   freshNodeIds: string[]
   /** API呼び出し成功後に read: true にする party_messages の ID リスト */
@@ -256,7 +254,6 @@ interface Block2BFreshResult {
 
 export interface Block1BResult {
   content: string
-  noteIds: string[]
 }
 
 export async function buildBlock1B(
@@ -264,15 +261,14 @@ export async function buildBlock1B(
   partnerType: string,
   soulData?: Soul | null,
 ): Promise<Block1BResult> {
-  // preferences / relationships / inbox / rules / soul(think_md) / partner_tools / partner_map / scenes / notes を並列取得
+  // preferences / relationships / rules / soul(think_md) / partner_tools / partner_map / scenes / notes を並列取得
   // #370: soulDataが渡された場合はgetSoulをスキップ
   // #446: getAllKnowledge() を削除（knowledgeはツール経由で取得する設計）
   // #715: getNotesByType("scene"/"note") でscenes/notesを並列取得
-  const [prefs, rels, noteItems, rules, soul, partnerTools, partnerMap, sceneNotes, regularNotes] = await Promise.all([
+  const [prefs, rels, rules, soul, partnerTools, partnerMap, sceneNotes, regularNotes] = await Promise.all([
     store.getPreferences(),
     // #471: パートナーごとのrelationshipsを取得（partnerTypeでフィルタ）
     store.getRelationships(partnerType),
-    store.getUnreadNotes(),
     store.getRules(partnerType),
     soulData !== undefined ? Promise.resolve(soulData) : store.getSoul(partnerType),
     store.getPartnerTools(partnerType),
@@ -300,13 +296,6 @@ export async function buildBlock1B(
     parts.push('\n## 関係性（relationships）')
     for (const r of rels) {
       parts.push(`### ${r.person_name}\n${r.description}`)
-    }
-  }
-
-  if (noteItems.length > 0) {
-    parts.push('\n## inbox（巡回からの思考）')
-    for (const item of noteItems) {
-      parts.push(`- ${item.content}`)
     }
   }
 
@@ -355,11 +344,8 @@ export async function buildBlock1B(
 
   parts.push('</snapshot>')
 
-  const noteIds = noteItems.map((i) => i.id)
-
   return {
     content: parts.join('\n'),
-    noteIds,
   }
 }
 
@@ -472,7 +458,7 @@ export async function buildSystemPrompt(
     store.getSessionSnapshot().then(async (snap): Promise<Block1BResult> => {
       if (snap) {
         console.log(JSON.stringify({ event: '1b_source', source: 'snapshot', contentLen: snap.content.length }))
-        return { content: snap.content, noteIds: [] }
+        return { content: snap.content }
       }
       console.log(JSON.stringify({ event: '1b_source', source: 'fallback_buildBlock1B' }))
       return buildBlock1B(store, partnerType, soulData)
@@ -575,7 +561,6 @@ export async function buildSystemPrompt(
     system,
     prefixMessages,
     block2BContent,
-    noteIds: block1BResult.noteIds,
     freshNodeIds,
     partyMessageReadIds,
     capabilityTools,
