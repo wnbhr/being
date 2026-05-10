@@ -371,6 +371,14 @@ export interface MemoryStore {
   getRules(partnerType: string): Promise<PartnerRule[]>
   getAllRules(partnerType: string): Promise<PartnerRule[]>
   updateRule(id: string, patch: { content?: string; enabled?: boolean }): Promise<void>
+  addRule(input: {
+    partnerType: string
+    category: string
+    title: string
+    content: string
+    sortOrder?: number
+  }): Promise<PartnerRule>
+  deleteRule(id: string): Promise<void>
 
   // --- profiles ---
   getProfile(): Promise<Profile | null>
