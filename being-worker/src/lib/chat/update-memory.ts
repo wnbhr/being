@@ -21,6 +21,7 @@ export const UPDATE_MEMORY_TOOL = {
     'パートナーの記憶（preferences, knowledge, relationship, partner_tools, partner_map, diary, notes）を読み書きする。また、party_message targetでパーティメッセージを送信できる。\n\n' +
     'notes: ユーザーへのメモ・ノートを管理する。get=全件取得, append=新規追加, update=内容更新(key=id), delete=削除(key=id)\n\n' +
     '⚠️ souls / partner_rules の書き込みは、ユーザーが明示的に指示した場合のみ使用すること。\n\n' +
+    '⚠️ partner_rules append の content は「[category] title: 本文」形式で指定すること。例: 「[memory] 記録時の認知: actorsはシーンの実態を書く」。title 部分に「:」を含めないこと（最初の「:」で title と本文が分割される）。\n\n' +
     '⚠️ update/delete 操作には必ず key を指定すること。key なしの update/delete は実行拒否されます。\n\n' +
     '【アクセス権限】このツールはユーザーの個人データにアクセスする。データはサービス提供目的のみに使用し、第三者提供はしない。ユーザーはデータの確認・修正・削除をいつでもリクエストできる。',
   input_schema: {
@@ -434,7 +435,33 @@ export async function handleUpdateMemory(
           return { success: true, message: `partner_rules[${key}] を更新しました` }
         }
 
-        return { success: false, message: `partner_rules の action ${action} は未対応です（追加・削除はUI経由）` }
+        if (action === 'append') {
+          if (!content) return { success: false, message: 'partner_rules append には content が必要です' }
+          // content 形式: [category] title: 本文
+          const m = content.match(/^\s*\[([^\]]+)\]\s*([^:]+?)\s*:\s*([\s\S]+)$/)
+          if (!m) {
+            return {
+              success: false,
+              message: 'partner_rules append の content は「[category] title: 本文」形式で指定してください',
+            }
+          }
+          const [, category, title, body] = m
+          const created = await store.addRule({
+            partnerType: pType,
+            category: category.trim(),
+            title: title.trim(),
+            content: body.trim(),
+          })
+          return { success: true, message: `partner_rules[${created.id}] を追加しました（${category.trim()}/${title.trim()}）` }
+        }
+
+        if (action === 'delete') {
+          if (!key) return { success: false, message: 'partner_rules delete には key（id）が必要です' }
+          await store.deleteRule(key)
+          return { success: true, message: `partner_rules[${key}] を削除しました` }
+        }
+
+        return { success: false, message: `partner_rules の action ${action} は未対応です` }
       }
 
       // ─── souls ──────────────────────────────────────
