@@ -1178,6 +1178,44 @@ export function createSupabaseMemoryStore(
       if (error) throw new Error(`updateRule failed: ${error.message}`)
     },
 
+    async addRule(input: {
+      partnerType: string
+      category: string
+      title: string
+      content: string
+      sortOrder?: number
+    }): Promise<PartnerRule> {
+      const row = {
+        user_id: userId,
+        ...(beingId ? { being_id: beingId } : {}),
+        partner_type: input.partnerType,
+        category: input.category,
+        title: input.title,
+        content: input.content,
+        sort_order: input.sortOrder ?? 100,
+        enabled: true,
+      }
+      const { data, error } = await supabase
+        .from('partner_rules')
+        .insert(row)
+        .select('id, partner_type, category, title, content, sort_order, enabled')
+        .single()
+      if (error) throw new Error(`addRule failed: ${error.message}`)
+      return data as PartnerRule
+    },
+
+    async deleteRule(id: string): Promise<void> {
+      let query = supabase
+        .from('partner_rules')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId)
+      if (beingId) query = query.eq('being_id', beingId)
+      const { data, error } = await query.select('id')
+      if (error) throw new Error(`deleteRule failed: ${error.message}`)
+      if (!data || data.length === 0) throw new Error(`deleteRule: id=${id} not found`)
+    },
+
     // ── profiles ──
 
     async getProfile(): Promise<Profile | null> {
