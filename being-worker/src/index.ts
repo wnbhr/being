@@ -23,6 +23,7 @@ import { beingIdentityRoute } from './routes/being-identity.js'
 import { mcpRoute } from './routes/mcp.js'
 import { beingExtensionsRoute } from './routes/being-extensions.js'
 import { beingRemoteExecRoute } from './routes/being-remote-exec.js'
+import { beingDelegateRoute } from './routes/being-delegate.js'
 import { beingToolLoopRoute } from './routes/being-tool-loop.js'
 import { telegramWebhookRoute } from './routes/telegram-webhook.js'
 import { oauthMetadataRoute } from './routes/oauth-metadata.js'
@@ -191,6 +192,7 @@ app.register(beingIdentityRoute)
 app.register(mcpRoute)
 app.register(beingExtensionsRoute)
 app.register(beingRemoteExecRoute)
+app.register(beingDelegateRoute)
 app.register(beingToolLoopRoute)
 app.register(telegramWebhookRoute)
 app.register(oauthMetadataRoute)
