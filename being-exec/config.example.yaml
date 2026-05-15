@@ -1,0 +1,50 @@
+# being-exec config example
+# Copy to config.yaml and edit before running.
+
+# Bind address. Default: 127.0.0.1 (loopback only).
+# The tunnel layer (Cloudflare Tunnel, Tailscale Funnel, etc.) handles
+# external exposure — there is normally no reason to change this.
+bind: 127.0.0.1
+
+# Port the server listens on.
+port: 7070
+
+# Bearer tokens. At least one required.
+# Values may reference environment variables: "$BRIDGE_TOKEN"
+# Token values should live in /opt/being-exec/env (mode 0600), not here.
+# Multiple tokens are supported to enable rotation.
+tokens:
+  - "$BRIDGE_TOKEN"
+  # - "$BRIDGE_TOKEN_OLD"   # keep old token during rotation
+
+# Maximum output size per stream (stdout / stderr) in bytes.
+# Output exceeding this limit is truncated and truncated=true is returned.
+max_output_bytes: 1048576  # 1 MiB
+
+# Default per-call timeout in milliseconds.
+# The caller may override this with timeout_ms in the request.
+default_timeout_ms: 30000
+
+# Hard upper bound for timeout_ms. Requests exceeding this are clamped.
+max_timeout_ms: 300000  # 5 min
+
+# Maximum request body size in bytes.
+max_request_bytes: 10485760  # 10 MiB
+
+# Command allowlist (default-deny: missing = every command is blocked).
+# Each entry is a regex pattern matched against the full command string.
+# Patterns are automatically anchored (^ … $) unless already present.
+#
+# shell_expand: false (default) — command is split on whitespace and executed
+#   directly (no shell). Safer; no glob expansion, no pipes.
+#   Note: quoted arguments with spaces are NOT supported in this mode.
+# shell_expand: true — command is passed to sh -c. Required for pipes,
+#   redirects, and shell built-ins. Use sparingly.
+allow:
+  - pattern: "systemctl status \\w+"
+  - pattern: "journalctl -u \\w+ --no-pager -n \\d+"
+  - pattern: "df -h"
+  - pattern: "uptime"
+  - pattern: "free -m"
+  # - pattern: "git -C /srv/app (pull|log --oneline -5)"
+  #   shell_expand: false

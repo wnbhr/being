@@ -1,0 +1,53 @@
+# .being-exclude — ruddia → being 同期除外リスト
+# rsync --exclude-from で使用
+# docs/ は being 側で独立管理するため同期しない
+
+# 環境設定・シークレット
+.env*
+
+# GitHub Actions（ruddia固有）
+.github/
+
+# 内部ドキュメント・資料（docs/ 丸ごと除外）
+docs/
+
+# being側で独立管理するREADME（OSS向け）
+README.md
+
+# Cove Webアプリ（非公開）
+app/
+components/
+public/
+hooks/
+i18n/
+messages/
+proxy.ts
+next.config.ts
+postcss.config.mjs
+tsconfig.json
+package.json
+package-lock.json
+node_modules/
+.next/
+vercel.json
+
+# Cove内部ライブラリ
+lib/
+
+# DBスキーマ
+supabase/
+
+# Gitメタ
+.git/
+
+# ruddia固有プラグイン
+ruddia-being-plugin/
+
+# ビルド成果物・キャッシュ
+__pycache__/
+*.pyc
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# 実験データ（大容量）
+experiments/

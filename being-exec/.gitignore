@@ -1,0 +1,7 @@
+# compiled binaries (distributed via GitHub Releases)
+being-exec
+being-exec-*
+/tmp/
+
+# local config (never commit real tokens)
+config.yaml

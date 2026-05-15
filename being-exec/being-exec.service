@@ -1,0 +1,26 @@
+[Unit]
+Description=Being Exec — Remote command receiver for Being
+Documentation=https://github.com/wnbhr/ruddia/tree/main/being-exec
+After=network.target
+
+[Service]
+Type=simple
+User=being-exec
+Group=being-exec
+WorkingDirectory=/opt/being-exec
+ExecStart=/opt/being-exec/being-exec --config /opt/being-exec/config.yaml
+EnvironmentFile=/opt/being-exec/env
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/being-exec
+ProtectHome=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
