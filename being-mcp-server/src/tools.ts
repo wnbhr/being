@@ -58,7 +58,12 @@ export const tools: ToolDef[] = [
         ),
       action: z.string().describe("Operation: get / append / update / delete"),
       content: z.string().optional().describe("Content for append/update"),
-      key: z.string().optional().describe("Key filter for update/delete/get"),
+      key: z.string().optional().describe(
+        "Key filter for update/delete/get. " +
+        "For knowledge/partner_tools/partner_map: passing a UUID performs a direct ID lookup. " +
+        "Any other string first tries an exact title match, then falls back to partial match (ilike). " +
+        "Example: 'self-report' also matches a title like '## self-report (mid-review) format…'."
+      ),
     },
     handler: async (args) => client.request("POST", "/memory/update", args),
   },
