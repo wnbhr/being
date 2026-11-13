@@ -56,14 +56,16 @@ export const tools: ToolDef[] = [
         .describe(
           "Target: preferences / knowledge / relationship / partner_tools / partner_map / diary / notes / partner_rules / souls"
         ),
-      action: z.string().describe("Operation: get / append / update / delete"),
+      action: z.string().describe("Operation: get / append / update / delete / edit"),
       content: z.string().optional().describe("Content for append/update"),
       key: z.string().optional().describe(
-        "Key filter for update/delete/get. " +
+        "Key filter for update/delete/get/edit. " +
         "For knowledge/partner_tools/partner_map: passing a UUID performs a direct ID lookup. " +
         "Any other string first tries an exact title match, then falls back to partial match (ilike). " +
         "Example: 'self-report' also matches a title like '## self-report (mid-review) format…'."
       ),
+      oldText: z.string().optional().describe("edit時の置換対象テキスト（完全一致）"),
+      newText: z.string().optional().describe("edit時の置換後テキスト"),
     },
     handler: async (args) => client.request("POST", "/memory/update", args),
   },
