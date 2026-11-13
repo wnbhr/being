@@ -190,11 +190,13 @@ export async function createMcpServer(
     'パートナーの記憶（preferences, knowledge, relationship 等）を読み書きする。',
     {
       target: z.enum(['preferences', 'knowledge', 'relationship', 'partner_tools', 'partner_map', 'diary', 'notes', 'party_message', 'partner_rules', 'souls']).describe('更新対象'),
-      action: z.enum(['get', 'append', 'update', 'delete']).describe('操作種別'),
+      action: z.enum(['get', 'append', 'update', 'delete', 'edit']).describe('操作種別'),
       content: z.string().optional().describe('追記・更新する内容'),
-      key: z.string().optional().describe('update/delete/getで対象を絞るキー'),
+      key: z.string().optional().describe('update/delete/get/editで対象を絞るキー'),
       location: z.string().optional().describe('partner_map upsert時のlocation'),
       to: z.string().optional().describe('送信先パートナー名（party_message時のみ）'),
+      oldText: z.string().optional().describe('edit時: 置換対象のテキスト'),
+      newText: z.string().optional().describe('edit時: 置換後のテキスト'),
     },
     async (args) => {
       const partnerType = await getPartnerType()
