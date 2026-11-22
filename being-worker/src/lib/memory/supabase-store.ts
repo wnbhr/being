@@ -48,10 +48,10 @@ export function sanitizeSearchTerm(term: string): string {
 }
 
 /**
- * 1検索語を action/feeling/themes 横断の or() clause 文字列に変換する。
+ * 1検索語を action/feeling/themes/when 横断の or() clause 文字列に変換する。
  * サニタイズ後に空になった場合は空文字を返す。
  *
- * 例: "記憶" → "scene->>action.ilike.%記憶%,feeling.ilike.%記憶%,themes.cs.{\"記憶\"}"
+ * 例: "記憶" → "scene->>action.ilike.%記憶%,feeling.ilike.%記憶%,themes.cs.{\"記憶\"},scene->>when.ilike.%記憶%"
  *
  * @internal Exported for unit testing.
  */
@@ -59,10 +59,12 @@ export function buildSearchOrClause(term: string): string {
   const safe = sanitizeSearchTerm(term)
   if (!safe) return ''
   // themes は string[] のため contains (cs) 構文を使い、配列値はダブルクォートで括る
+  // when は scene JSONB 内の日時文字列（#942）
   return [
     `scene->>action.ilike.%${safe}%`,
     `feeling.ilike.%${safe}%`,
     `themes.cs.{"${safe}"}`,
+    `scene->>when.ilike.%${safe}%`,
   ].join(',')
 }
 
@@ -741,14 +743,41 @@ export function createSupabaseMemoryStore(
     // knowledge テーブルは DROP しない（別用途で有用。新規書き込みは partner_map に向ける）
 
     async getKnowledge(title: string): Promise<KnowledgeEntry | null> {
-      const { data } = await supabase
+      // UUID形式ならIDで直接引く
+      const isUuid = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(title)
+      if (isUuid) {
+        const fullUuid = title.includes('-') ? title :
+          `${title.slice(0,8)}-${title.slice(8,12)}-${title.slice(12,16)}-${title.slice(16,20)}-${title.slice(20)}`
+        const { data } = await supabase
+          .from('partner_map')
+          .select('id, title, description')
+          .eq('user_id', userId)
+          .eq('partner_type', 'shared')
+          .eq('id', fullUuid)
+          .maybeSingle()
+        return data as KnowledgeEntry | null
+      }
+
+      // まず完全一致を試行
+      const { data: exact } = await supabase
         .from('partner_map')
         .select('id, title, description')
         .eq('user_id', userId)
         .eq('partner_type', 'shared')
         .eq('title', title)
         .maybeSingle()
-      return data as KnowledgeEntry | null
+      if (exact) return exact as KnowledgeEntry
+
+      // 完全一致なし → 部分一致（ilike）
+      const { data: partial } = await supabase
+        .from('partner_map')
+        .select('id, title, description')
+        .eq('user_id', userId)
+        .eq('partner_type', 'shared')
+        .ilike('title', `%${title}%`)
+        .limit(1)
+        .maybeSingle()
+      return partial as KnowledgeEntry | null
     },
 
     async getAllKnowledge(): Promise<KnowledgeEntry[]> {
@@ -772,12 +801,54 @@ export function createSupabaseMemoryStore(
     },
 
     async deleteKnowledge(title: string): Promise<void> {
-      await supabase
+      const isUuid = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(title)
+      if (isUuid) {
+        const fullUuid = title.includes('-') ? title :
+          `${title.slice(0,8)}-${title.slice(8,12)}-${title.slice(12,16)}-${title.slice(16,20)}-${title.slice(20)}`
+        await supabase
+          .from('partner_map')
+          .delete()
+          .eq('user_id', userId)
+          .eq('partner_type', 'shared')
+          .eq('id', fullUuid)
+        return
+      }
+
+      // まず完全一致
+      const { data: exact } = await supabase
         .from('partner_map')
-        .delete()
+        .select('id')
         .eq('user_id', userId)
         .eq('partner_type', 'shared')
         .eq('title', title)
+        .maybeSingle()
+      if (exact) {
+        await supabase
+          .from('partner_map')
+          .delete()
+          .eq('user_id', userId)
+          .eq('partner_type', 'shared')
+          .eq('id', (exact as { id: string }).id)
+        return
+      }
+
+      // 部分一致でIDを特定してから削除
+      const { data: partial } = await supabase
+        .from('partner_map')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('partner_type', 'shared')
+        .ilike('title', `%${title}%`)
+        .limit(1)
+        .maybeSingle()
+      if (partial) {
+        await supabase
+          .from('partner_map')
+          .delete()
+          .eq('user_id', userId)
+          .eq('partner_type', 'shared')
+          .eq('id', (partial as { id: string }).id)
+      }
     },
 
     // ── relationships ──
