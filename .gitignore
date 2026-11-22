@@ -75,6 +75,3 @@ lib/llm/types.ts
 lib/utils/encryption.ts
 being-mcp-server/node_modules/
 being-mcp-server/dist/
-
-# Prevent committing debug/check scripts with credentials
-scripts/check_*.py

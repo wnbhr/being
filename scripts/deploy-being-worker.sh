@@ -12,7 +12,7 @@
 #   bash scripts/deploy-being-worker.sh --host 192.168.1.100 --key ~/.ssh/mykey
 #
 # オプション:
-#   --host HOST   SSH接続先ホスト（必須、または SSH_HOST 環境変数で指定）
+#   --host HOST   SSH接続先ホスト（デフォルト: 133.88.116.107 (Being Worker VPS)）
 #   --key  PATH   SSH秘密鍵のパス（デフォルト: ~/.ssh/being-worker）
 
 set -euo pipefail
@@ -20,7 +20,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$SCRIPT_DIR/.."
 
-SSH_HOST="${SSH_HOST:-}"
+SSH_HOST="${SSH_HOST:-133.88.116.107}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/being-worker}"
 SSH_USER="ubuntu"
 REMOTE_DIR="/home/ubuntu/being-worker"
@@ -33,11 +33,6 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
-
-if [[ -z "$SSH_HOST" ]]; then
-  echo "❌ SSH_HOST is required. Use --host or set SSH_HOST env var."
-  exit 1
-fi
 
 echo "🚀 deploy-being-worker.sh: $SSH_USER@$SSH_HOST"
 echo ""

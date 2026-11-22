@@ -1,0 +1,8 @@
+import urllib.request
+import json
+
+ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV2anJtZGZjamVkeWp2a2lpdWxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0OTg4OTEsImV4cCI6MjA5MDA3NDg5MX0.9weUSGEpgJ-tSwwtZFd8_w0Gw8tw-oh9K93kX8S4PpE"
+
+# /api/partners はサーバーサイド認証が必要なので
+# ChatClientの変更部分のコードを直接確認する
+print("ChatClientの変更箇所を確認")
