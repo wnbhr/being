@@ -5,6 +5,9 @@
 # 環境設定・シークレット
 .env*
 
+# 内部スクリプト（キー混入防止）
+scripts/
+
 # GitHub Actions（ruddia固有）
 .github/
 
