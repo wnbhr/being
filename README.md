@@ -1,5 +1,7 @@
 # Being
 
+[![CI](https://github.com/wnbhr/being/actions/workflows/ci.yml/badge.svg)](https://github.com/wnbhr/being/actions/workflows/ci.yml)
+
 **Personality Runtime for AI** — give any AI its own personality, memory, and identity.
 
 Being is an open-source layer that sits between your application and any LLM. It provides persistent personality (SOUL), episodic memory, background thought cycles (Patrol), and cryptographic identity — turning a stateless LLM into a distinct, evolving AI entity.
