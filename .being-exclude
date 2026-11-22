@@ -14,8 +14,10 @@ scripts/
 # 内部ドキュメント・資料（docs/ 丸ごと除外）
 docs/
 
-# being側で独立管理するREADME（OSS向け）
+# being側で独立管理するファイル（OSS向け）
 README.md
+LICENSE
+.gitignore
 
 # Cove Webアプリ（非公開）
 app/
