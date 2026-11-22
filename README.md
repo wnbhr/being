@@ -52,7 +52,7 @@ The Being Worker handles everything else: memory consolidation, decay, recall, b
 | **Memory** | Episodic memories stored as structured "scenes" (who, what, when, where, emotion). Memories accumulate, decay, merge, and consolidate over time. Organized into topic-based clusters that the Being can explore during conversation. |
 | **Patrol** | A background cycle that processes conversations into memory, consolidates fading memories, and generates introspective thoughts. The Being stays alive between sessions. |
 | **Identity** | Ed25519 key pair + tamper-evident signature chain. Cryptographic proof of ownership and history. |
-| **Sense/Act** | *(Planned)* WebSocket Bridge for connecting physical devices and external services. The Being will perceive and act through your app. |
+| **Sense/Act** | *(Experimental)* WebSocket Bridge for connecting physical devices and external services. The Being perceives and acts through your app. |
 | **BYOK** | Bring Your Own Key. All LLM calls use the user's API key. The platform never uses quota without consent. |
 
 ## Connect via MCP
@@ -142,7 +142,7 @@ npm start
 | [Sense-Act Bridge](docs/specs/06-sense-act-bridge.md) | WebSocket Bridge for device integration |
 | [Architecture](docs/specs/01-architecture-overview.md) | System architecture, deployment, and BYOK design |
 | [OAuth 2.1](docs/specs/07-oauth.md) | Third-party authorization flow |
-| [Extensions](docs/specs/08-extensions.md) | Extension system design (all planned) |
+| [Extensions](docs/specs/08-extensions.md) | Extension system design |
 | [Vision](docs/vision.md) | Why we're building this |
 
 ## Extensions
@@ -152,7 +152,7 @@ Being supports optional extensions that add capabilities without changing the co
 - **Telegram BYOB** *(experimental)* — Connect your own Telegram bot to a Being
 - **Tool Loop** *(experimental)* — Autonomous LLM agent loop with web search, file ops, and code execution
 - **Sandbox** *(experimental)* — Isolated workspace with GitHub integration for code execution
-- **Sense/Act Bridge** *(planned)* — Connect physical devices and external services
+- **Sense/Act Bridge** *(experimental)* — Connect physical devices and external services
 
 ## Tech Stack
 
@@ -165,7 +165,7 @@ Being supports optional extensions that add capabilities without changing the co
 
 ## License
 
-[Apache 2.0](LICENSE)
+[Apache 2.0](LICENSE). The `being-mcp-server/` package is licensed under [MIT](being-mcp-server/LICENSE).
 
 ---
 
