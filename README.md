@@ -127,6 +127,8 @@ npm start
 | `VAPID_PUBLIC_KEY` | — | Web Push VAPID public key |
 | `VAPID_PRIVATE_KEY` | — | Web Push VAPID private key |
 
+> **Note:** The database schema is not included in this repository. Self-hosting currently requires setting up your own Supabase schema. We plan to publish migration files in a future release.
+
 ## Documentation
 
 | Document | Description |
@@ -147,9 +149,9 @@ npm start
 
 Being supports optional extensions that add capabilities without changing the core:
 
-- **Telegram BYOB** *(planned)* — Connect your own Telegram bot to a Being
-- **Tool Loop** *(planned)* — Autonomous LLM agent loop with web search, file ops, and code execution
-- **Sandbox** *(planned)* — Isolated workspace with GitHub integration for code execution
+- **Telegram BYOB** *(experimental)* — Connect your own Telegram bot to a Being
+- **Tool Loop** *(experimental)* — Autonomous LLM agent loop with web search, file ops, and code execution
+- **Sandbox** *(experimental)* — Isolated workspace with GitHub integration for code execution
 - **Sense/Act Bridge** *(planned)* — Connect physical devices and external services
 
 ## Tech Stack
